@@ -157,9 +157,34 @@ At <https://entra.microsoft.com> → App registrations → **New registration**:
 
    then **Grant admin consent for AEON Delight Asia**. All three must show green "Granted".
    Scope `Mail.Send` to one sender mailbox with an Exchange application access policy.
-4. **For every registration you want managed: open it → Owners → Add owner → this app.**
+4. **Opt each registration in by making this app's service principal an Owner of it.**
    A registration that is not owned is invisible here — it will not appear and will not be
    warned about.
+
+   **The Entra admin center cannot do this.** Its Owners picker searches *users* only, so the
+   service principal never shows up, even though Entra is perfectly happy for one to be an
+   owner. It has to go through Microsoft Graph. Use the script:
+
+   ```powershell
+   Install-Module Microsoft.Graph.Authentication, Microsoft.Graph.Applications -Scope CurrentUser
+   .\scriptsdd-owner.ps1 -WhatIf     # see what it would do
+   .\scriptsdd-owner.ps1             # do it
+   ```
+
+   It signs you in interactively, finds the service principal by its Application (client) ID,
+   and adds it as an owner of each registration named in `-Apps`. Safe to re-run; anything
+   already owned is skipped. Adding an owner needs `Application.ReadWrite.All`, so run it as a
+   Global / Privileged Role / Cloud Application Administrator.
+
+   Doing it by hand instead, in Graph Explorer:
+
+   ```http
+   POST https://graph.microsoft.com/v1.0/applications/{target-app-object-id}/owners/$ref
+   { "@odata.id": "https://graph.microsoft.com/v1.0/directoryObjects/{this-app-service-principal-object-id}" }
+   ```
+
+   The service principal object id is on **Enterprise applications → AEON Secret Management →
+   Object ID** — not the Object ID shown on the App registration, which is a different object.
 
 ## Coolify API token
 
