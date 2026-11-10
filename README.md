@@ -86,7 +86,7 @@ Two schemas. `APP_SCHEMA` (default `appreg_app`) holds the OneView account table
 | `HEALTH_TIMEOUT_MS` | `120000` | how long to wait for an app after restart |
 | `RESTART_SETTLE_MS` | `8000` | pause after a restart before health-checking |
 | `RUN_LOG_DAYS` | `180` | how long rotation runs are kept |
-| `FRAME_ANCESTORS` | — | **set this to the OneView origin** so OneView can embed the module |
+| `FRAME_ANCESTORS` | — | extra origins allowed to embed the module, space-separated. OneView (`https://oneview.aeondelightasia.online`) and `localhost:8090` are already allowed |
 | `PORT` | `8094` | local DEV default; the Dockerfile uses `8080` inside the container |
 
 ## Local development (Docker)
@@ -134,7 +134,7 @@ Server `179.197.249.13` — the only one. Project **Secret Management**.
    Coolify auto-adds `www.` — remove it. DNS A record → `179.197.249.13`, **DNS only (grey cloud)**
    so Let's Encrypt HTTP-01 can complete.
 5. Environment Variables → Developer View → paste into **Production**:
-   `DATABASE_URL`, `APP_SECRET`, the three `SSO_*` values, `FRAME_ANCESTORS`, and on the first
+   `DATABASE_URL`, `APP_SECRET`, the three `SSO_*` values, and on the first
    deploy only `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`. No inline `#` comments —
    Coolify strips them.
 6. Deploy, then poll `https://secret.aeondelightasia.online/api/health`.
@@ -210,10 +210,12 @@ Turning self-rotation on is a deliberate choice, not the default.
 
 The navbar hides itself inside OneView's iframe. The session cookie is
 `HttpOnly; Secure; SameSite=None; Partitioned` on HTTPS, and `Content-Security-Policy:
-frame-ancestors` allows whatever `FRAME_ANCESTORS` lists. **Set `FRAME_ANCESTORS` to the OneView
-origin** — it is not hard-coded, because the estate moved off Zeabur and a stale origin in a
-security header is worse than an explicit setting. Then, in OneView → Configuration, point the
-module's tile at `https://secret.aeondelightasia.online`.
+frame-ancestors` allows `'self'`, **`https://oneview.aeondelightasia.online`** (OneView moved off
+Zeabur to the VPS in Nov 2026) and `http://localhost:8090` for OneView DEV. Anything else goes in
+`FRAME_ANCESTORS`, space-separated.
+
+Then, in OneView → Configuration, point the module's tile at
+`https://secret.aeondelightasia.online`.
 
 ## Troubleshooting
 

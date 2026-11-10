@@ -43,10 +43,10 @@ const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 // Password sign-in can only be switched off once Microsoft sign-in works, so nobody is locked out.
 const PASSWORD_LOGIN = process.env.PASSWORD_LOGIN !== "0" || !sso.enabled();
 // OneView embeds its modules in an iframe, so its origin must be allowed here.
-// It is NOT hard-coded: the estate moved off Zeabur and the OneView production
-// origin on Coolify has not been confirmed, so set FRAME_ANCESTORS to it rather
-// than letting a stale guess sit in a security header.
-const FRAME_ANCESTORS = ["'self'", "http://localhost:8090"]
+// OneView moved off Zeabur to the VPS (179.197.249.13) in Nov 2026; the old
+// aeon-oneview.zeabur.app origin is gone and is deliberately not listed.
+// FRAME_ANCESTORS adds further origins (space-separated) without a code change.
+const FRAME_ANCESTORS = ["'self'", "https://oneview.aeondelightasia.online", "http://localhost:8090"]
   .concat(String(process.env.FRAME_ANCESTORS || "").split(/\s+/).filter(Boolean)).join(" ");
 
 const app = express();
