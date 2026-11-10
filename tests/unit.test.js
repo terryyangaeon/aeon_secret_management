@@ -156,6 +156,33 @@ await t("a token without read:sensitive is reported as unreadable", async () => 
     assert.strictEqual(v.readable, false);
   });
 });
+await t("preview variables never leak into the production set", async () => {
+  // Coolify returns the same key twice when an app has preview deployments, and
+  // the values differ. Snapshotting the preview value and rolling it back would
+  // write the wrong secret into production — this is from the live API.
+  const f = httpStub([[/envs$/, () => jsonRes([
+    { key: "DATABASE_URL", value: "postgres://production", is_preview: false },
+    { key: "DATABASE_URL", value: "postgres://preview", is_preview: true },
+    { key: "SSO_CLIENT_SECRET", value: "PROD-SECRET", is_preview: false },
+    { key: "SSO_CLIENT_SECRET", value: "PREVIEW-SECRET", is_preview: true },
+    { key: "ONLY_IN_PREVIEW", value: "x", is_preview: true },
+  ])]]);
+  await withFetch(f, async () => {
+    const prod = await coolify.listVariables(APP);
+    assert.strictEqual(prod.vars.DATABASE_URL, "postgres://production");
+    assert.strictEqual(prod.vars.SSO_CLIENT_SECRET, "PROD-SECRET");
+    assert.ok(!("ONLY_IN_PREVIEW" in prod.vars), "preview-only keys must not appear");
+    assert.strictEqual((await coolify.getVariable(APP, "SSO_CLIENT_SECRET")).value, "PROD-SECRET");
+    const prev = await coolify.listVariables(APP, { preview: true });
+    assert.strictEqual(prev.vars.SSO_CLIENT_SECRET, "PREVIEW-SECRET", "the other set is reachable on purpose");
+  });
+});
+await t("an entry with no is_preview flag counts as production", async () => {
+  const f = httpStub([[/envs$/, () => jsonRes([{ key: "K", value: "v" }])]]);
+  await withFetch(f, async () => {
+    assert.strictEqual((await coolify.listVariables(APP)).vars.K, "v");
+  });
+});
 await t("a variable that does not exist yet is reported, not invented", async () => {
   const f = httpStub([[/envs$/, () => jsonRes([{ key: "OTHER", value: "x" }])]]);
   await withFetch(f, async () => {

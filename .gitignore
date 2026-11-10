@@ -7,3 +7,10 @@ node_modules/
 
 # Session transcripts and screenshots kept for reference — not part of the app
 _reference/
+
+# Credential notes kept beside the project — never commit these.
+*Secret*.txt
+*secret*.txt
+*App Registration*.txt
+*.pem
+*.pfx

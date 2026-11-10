@@ -17,7 +17,7 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
 - **Rotation** — on a schedule or on demand:
 
   ```
-  1  Entra: addPassword            new secret, 12-month lifetime by default
+  1  Entra: addPassword            new secret, 6-month lifetime by default
   2  store the value encrypted     Graph hands it over exactly once
   3  snapshot + write the Coolify environment variable(s)
   4  restart each affected application
@@ -29,7 +29,8 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
   restored from the snapshots, the application is restarted again, and the *new* secret is deleted —
   the app carries on with the old one, and you get an email saying so.
 - **Per-app policy** — rotate *N days before expiry* (default 30), *monthly* on a chosen day, or
-  *manual only*. New-secret lifetime is 1–24 months.
+  *manual only*. New-secret lifetime defaults to **6 months**, because the AEON tenant's
+  application management policy caps client secrets at 6 months; asking for longer is refused.
 - **Several targets per app** — one registration's secret can live in more than one Coolify
   application (e.g. an app service plus a separate Supabase service).
 - Sign-in, Account Management and the navbar follow the usual OneView model.
@@ -147,7 +148,8 @@ At <https://entra.microsoft.com> → App registrations → **New registration**:
    `https://secret.aeondelightasia.online/api/auth/sso/callback`
    (add `http://localhost:8094/api/auth/sso/callback` for DEV).
 2. Certificates & secrets → New client secret → copy the **Value** (not the Secret ID).
-   Give this one a **24-month** lifetime — see "the tool's own secret" below.
+   The tenant caps secret lifetime at **6 months**, so this one expires twice a year —
+   see "the tool's own secret" below.
 3. API permissions → Microsoft Graph → **Application permissions**:
    - `User.Read.All` — the directory check when an admin adds an SSO account
    - `Application.ReadWrite.OwnedBy` — read and rotate secrets on owned registrations
@@ -200,11 +202,17 @@ enabled under Settings → Advanced.
 This app's own client secret is the one it cannot safely rotate: a half-failed self-rotation takes
 away its own Graph access. So:
 
-- give it a **24-month** lifetime,
+- the tenant caps secrets at **6 months**, so this one has to be renewed by hand twice a year,
 - leave `auto_rotate` **off** for its own registration — it still monitors and emails about itself,
+  so you get the 60/30/14/7/1-day warnings like any other app,
 - keep the break-glass Email admin, so you can always get in and read the dashboard.
 
 Turning self-rotation on is a deliberate choice, not the default.
+
+**Longer term**, app-only Graph access can use a *certificate* instead of a client secret.
+Certificates are usually governed by a separate (often longer) policy, which would turn this twice-
+yearly chore into a yearly one. It needs certificate credentials in `lib/graph.js` and is not
+implemented today.
 
 ## Embedding in OneView
 

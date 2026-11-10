@@ -146,7 +146,7 @@
     </div>
     <div class="row2">
       <div><div class="fieldlbl">負責人 Owner email</div><input type="email" id="amOwner" placeholder="itdept@aeondelightasia.com"></div>
-      <div><div class="fieldlbl">新密碼有效期 New secret lifetime <span class="lh">(months, 1–24)</span></div><input type="number" id="amLifetime" min="1" max="24" value="12"></div>
+      <div><div class="fieldlbl">新密碼有效期 New secret lifetime <span class="lh">(months; the tenant caps this at 6)</span></div><input type="number" id="amLifetime" min="1" max="24" value="6"></div>
     </div>
     <div class="fieldlbl">備註 Notes</div><textarea id="amNotes"></textarea>
 
@@ -275,7 +275,7 @@
     $("#amMode").value = a ? a.rotationMode : "expiry";
     $("#amDays").value = a ? a.rotateBeforeDays : 30;
     $("#amDay").value = a ? a.monthlyDay : 1;
-    $("#amLifetime").value = a ? a.lifetimeMonths : 12;
+    $("#amLifetime").value = a ? a.lifetimeMonths : 6;
     $("#amActive").checked = a ? a.active : true;
     $("#amPickHint").textContent = "";
     syncModeBlocks();
