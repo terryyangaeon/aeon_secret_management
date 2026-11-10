@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>密鑰管理 · Secret Management</title>
+<meta name="description" content="AEON Delight (Asia) internal system — sign in with your company account.">
+<link rel="icon" href="/static/favicon.png">
+<script>if (window.self !== window.top) document.documentElement.classList.add("in-iframe");</script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", Roboto, sans-serif;
+         background: #fff; color: #1c1917; min-height: 100vh; position: relative; }
+  /* Wallpaper backdrop at 70% opacity — same as the OneView sign-in page */
+  body::before { content: ""; position: fixed; inset: 0; z-index: 0; background: url("/static/wallpaper-login.jpg") center center / cover no-repeat; opacity: 0.7; }
+  body > * { position: relative; z-index: 1; }
+  [hidden] { display: none !important; }
+
+  /* Same bar as the OneView navbar, without the signed-in menu; hidden inside OneView's iframe */
+  header.top { height: 90px; display: flex; align-items: center; padding: 0 32px; background: #FFCC00; border-bottom: 1px solid #e6b800; }
+  html.in-iframe header.top { display: none; }
+  .brand { display: inline-flex; align-items: center; gap: 18px; text-decoration: none; }
+  .brand img { height: 54px; display: block; }
+  .brand-text { display: flex; flex-direction: column; border-left: 2px solid rgba(28,25,23,.18); padding-left: 18px; }
+  .brand-text .l1 { font-size: 18px; font-weight: 700; color: #1c1917; letter-spacing: .02em; }
+  .brand-text .l2 { font-size: 13px; font-weight: 600; color: #44403c; }
+
+  main { padding: 20px; }
+  .login-box { background: #fff; border-radius: 16px; padding: 30px 28px; width: 100%; max-width: 420px;
+               box-shadow: 0 20px 60px rgba(0,0,0,.18); margin: 60px auto; }
+  .brand-center { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-bottom: 22px; }
+  .brand-center img { height: 50px; margin-bottom: 4px; }
+  .brand-center .l1 { font-size: 17px; font-weight: 800; color: #90207a; }
+  .brand-center .l2 { font-size: 13px; font-weight: 700; color: #90207a; }
+
+  /* Primary: company (Microsoft Entra) account */
+  .sso-btn { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 13px 16px; border: 0; border-radius: 10px;
+             background: #1e3a5f; color: #fff; font: inherit; font-weight: 700; font-size: 14.5px; line-height: 1.35; cursor: pointer; text-align: center; }
+  .sso-btn:hover { background: #16304f; }
+  .sso-btn:focus-visible { outline: 3px solid #FFCC00; outline-offset: 2px; }
+  .sso-btn:disabled { opacity: .7; cursor: default; }
+  .sso-btn svg { flex-shrink: 0; }
+
+  /* Secondary: email + password, collapsed until asked for */
+  .pw-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 18px; padding: 6px; border: 0; background: none;
+               color: #78716c; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .pw-toggle:hover { color: #1c1917; text-decoration: underline; }
+  .pw-toggle .chev { transition: transform .15s; }
+  .pw-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .pw-section { border-top: 1px solid #e7e5e4; margin-top: 8px; padding-top: 4px; }
+  label { display: block; font-size: 12px; color: #78716c; font-weight: 600; margin: 12px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  input[type=email], input[type=password], input[type=text] { width: 100%; padding: 11px 12px; border: 1px solid #d6d3d1; border-radius: 9px; font: inherit; background: #fff; color: #1c1917; }
+  input:focus { outline: 2px solid #FFCC00; border-color: #FFCC00; }
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 44px; }
+  .pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: #78716c; border-radius: 6px; cursor: pointer; padding: 0; }
+  .pw-eye:hover { background: #f5f5f4; color: #1c1917; }
+  .pw-eye svg { width: 20px; height: 20px; display: block; }
+  .login-btn { width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 9px; background: #90207a; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+  .login-btn:hover { background: #741964; }
+  .login-btn:disabled { opacity: .6; cursor: default; }
+  .login-err { color: #b91c1c; font-size: 13px; min-height: 18px; margin-top: 12px; text-align: center; }
+
+  @media (max-width: 600px) {
+    header.top { padding: 0 16px; height: 72px; }
+    .brand { gap: 12px; } .brand img { height: 40px; }
+    .brand-text { padding-left: 12px; border-left-width: 1px; } .brand-text .l1 { font-size: 15px; } .brand-text .l2 { font-size: 11px; }
+    .login-box { margin: 28px auto; padding: 26px 20px; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <span class="brand" aria-label="AEON delight — 密鑰管理 Secret Management">
+      <img src="/static/aeon_banner.png" alt="AEON delight">
+      <span class="brand-text"><span class="l1">密鑰管理</span><span class="l2">Secret Management</span></span>
+    </span>
+  </header>
+
+  <main>
+    <div class="login-box">
+      <div class="brand-center">
+        <img src="/static/aeon_banner.png" alt="AEON delight">
+        <div class="l1">密鑰管理</div>
+        <div class="l2">Secret Management</div>
+      </div>
+
+      <button type="button" class="sso-btn" id="ssoBtn" hidden>
+        <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+        <span>使用 永旺永樂(亞洲) 帳戶登入<br>Sign in with AEON Delight (Asia) Account</span>
+      </button>
+
+      <button type="button" class="pw-toggle" id="pwToggle" aria-expanded="false" aria-controls="pwSection" hidden>
+        使用電郵及密碼登入 · Sign in with email &amp; password
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <!-- The email/password form is only added when asked for, so the page itself carries no password field. -->
+      <div class="pw-section" id="pwSection" hidden></div>
+
+      <div class="login-err" id="err" role="alert"></div>
+    </div>
+  </main>
+
+<script>
+  var $ = function (s) { return document.querySelector(s); };
+  // Only same-site relative paths are accepted as the post-login destination.
+  function nextUrl() {
+    var m = location.search.match(/[?&]next=([^&]+)/), n = m ? decodeURIComponent(m[1]) : "/";
+    return /^\/(?!\/)/.test(n) && n.indexOf("/login.html") !== 0 ? n : "/";
+  }
+  // Already signed in → go straight on.
+  fetch("/api/auth/me", { cache: "no-store" }).then(function (r) { if (r.ok) location.replace(nextUrl()); });
+
+  var m = location.search.match(/[?&]sso_error=([^&]+)/);
+  if (m) $("#err").textContent = decodeURIComponent(m[1].replace(/\+/g, " "));
+
+  // ---- Which sign-in options are on ----
+  fetch("/api/auth/options", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (o) {
+    $("#ssoBtn").hidden = !o.sso;
+    if (!o.password) return;
+    if (o.sso) $("#pwToggle").hidden = false;      // SSO first; password sign-in collapsed
+    else showPasswordForm(false);                 // no SSO configured: password is the only way
+  }).catch(function () { showPasswordForm(false); });
+
+  // ---- Company account (Microsoft Entra ID) ----
+  var inFrame = window.self !== window.top;
+  $("#ssoBtn").addEventListener("click", function () {
+    $("#err").textContent = "";
+    var url = "/api/auth/sso/start?next=" + encodeURIComponent(nextUrl());
+    // Microsoft's page refuses to load inside OneView's iframe, so use a popup there.
+    if (!inFrame) { location.href = url; return; }
+    var w = window.open(url + "&popup=1", "appregSso", "width=520,height=680");
+    if (!w) { $("#err").textContent = "請允許彈出視窗 · Please allow pop-ups for this site and try again."; return; }
+    $("#ssoBtn").disabled = true;
+    var t = setInterval(function () { if (w.closed) { clearInterval(t); $("#ssoBtn").disabled = false; } }, 500);
+  });
+  window.addEventListener("message", function (e) {
+    if (e.origin !== location.origin || !e.data || e.data.type !== "appreg-sso") return;
+    if (e.data.error) { $("#err").textContent = e.data.error; return; }
+    fetch("/api/auth/sso/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: e.data.code }) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || "Sign in failed."); }); })
+      .then(function () { location.href = nextUrl(); })
+      .catch(function (err) { $("#err").textContent = err.message; });
+  });
+
+  // ---- Email + password (secondary) ----
+  var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  var built = false;
+  function buildForm() {
+    if (built) return;
+    built = true;
+    $("#pwSection").innerHTML =
+      '<form id="loginForm">' +
+      '<label for="lEmail">Email</label>' +
+      '<input type="email" id="lEmail" autocomplete="email" placeholder="you@aeondelightasia.com" required>' +
+      '<label for="lPass">Password</label>' +
+      '<div class="pw-wrap"><input type="text" id="lPass" autocomplete="current-password" placeholder="Your password" required>' +
+      '<button type="button" class="pw-eye" id="lEye" aria-label="Show password">' + EYE + '</button></div>' +
+      '<button class="login-btn" type="submit" id="lBtn">登入 · Sign in</button></form>';
+    $("#lPass").type = "password";   // set here so the page source has no password-type field
+    $("#lEye").addEventListener("click", function () {
+      var p = $("#lPass"), reveal = p.type === "password";
+      p.type = reveal ? "text" : "password";
+      $("#lEye").innerHTML = reveal ? EYE_OFF : EYE;
+      p.focus();
+    });
+    $("#loginForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      $("#err").textContent = "";
+      $("#lBtn").disabled = true;
+      fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("#lEmail").value.trim(), password: $("#lPass").value }) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          $("#lBtn").disabled = false;
+          if (res.ok) location.href = nextUrl();
+          else $("#err").textContent = res.j.message || "Sign in failed.";
+        })
+        .catch(function () { $("#lBtn").disabled = false; $("#err").textContent = "Network error."; });
+    });
+  }
+  function showPasswordForm(focus) {
+    buildForm();
+    $("#pwSection").hidden = false;
+    $("#pwToggle").setAttribute("aria-expanded", "true");
+    if (focus) $("#lEmail").focus();
+  }
+  $("#pwToggle").addEventListener("click", function () {
+    if ($("#pwSection").hidden) showPasswordForm(true);
+    else { $("#pwSection").hidden = true; $("#pwToggle").setAttribute("aria-expanded", "false"); }
+  });
+</script>
+</body>
+</html>

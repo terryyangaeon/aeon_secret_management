@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>設定 Configuration — 密鑰管理 Secret Management</title>
+<link rel="icon" href="/static/favicon.png">
+<script>if (window.self !== window.top) document.documentElement.classList.add("in-iframe");</script>
+<link rel="stylesheet" href="/static/oneview-navbar.css">
+<link rel="stylesheet" href="/static/appreg.css">
+<style>
+  .sect { font-size: 15px; font-weight: 800; color: #90207a; margin: 0 0 12px; }
+  .panel { background: #fff; border: 1px solid #e7e5e4; border-radius: 12px; padding: 18px; max-width: 760px; margin-bottom: 18px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 12.5px; }
+  .kv dt { color: #78716c; } .kv dd { margin: 0; font-weight: 600; }
+  .pick { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .pick select { width: auto; min-width: 260px; }
+</style>
+</head>
+<body>
+<!--#navbar-->
+
+  <div class="layout">
+    <nav class="sidebar">
+      <button class="side-item on" data-view="apps">應用程式 Applications</button>
+      <button class="side-item" data-view="targets">傳送位置 Delivery targets</button>
+      <button class="side-item" data-view="coolify">Coolify 連線 Connection</button>
+      <button class="side-item" data-view="alerts">電郵提醒 Alerts</button>
+      <button class="side-item" data-view="audit">稽核記錄 Audit log</button>
+    </nav>
+
+    <div class="content">
+      <div class="denied" id="denied" hidden>只有管理員可以開啟設定。 · Only admins can open Configuration.</div>
+
+      <div id="cfg" hidden>
+        <!-- Applications -->
+        <section id="view-apps">
+          <div class="head-row">
+            <h1 class="sect" style="margin:0">應用程式 Applications</h1>
+            <button class="btn primary" id="addAppBtn">+ 加入應用程式 Add application</button>
+          </div>
+          <div class="banner info">
+            只有在 Entra 中把本系統列為 <b>擁有者 Owner</b> 的應用程式註冊才會在此出現。
+            · Only app registrations where this tool is listed as an <b>Owner</b> in Entra appear here.
+            <span id="selfSp"></span>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>名稱 Name</th><th>Client ID</th><th>自動更新 Auto-rotate</th><th>政策 Policy</th><th>目標 Targets</th><th>狀態 Status</th><th class="right">　</th></tr></thead>
+              <tbody id="appRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Targets -->
+        <section id="view-targets" hidden>
+          <h1 class="sect">傳送位置 Delivery targets</h1>
+          <p class="hint" style="margin-top:-6px">更新後的新密碼會寫入這些 Coolify 環境變數。
+            · After a rotation the new secret is written into these Coolify environment variables.</p>
+          <div class="pick">
+            <select id="tgtApp"></select>
+            <button class="btn primary" id="addTgtBtn" disabled>+ 加入目標 Add target</button>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>標籤 Label</th><th>服務 Service</th><th>變數 Variable</th><th>重啟 Restart</th><th>健康檢查 Health check</th><th class="right">　</th></tr></thead>
+              <tbody id="tgtRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Coolify -->
+        <section id="view-coolify" hidden>
+          <h1 class="sect">Coolify 連線 Connection</h1>
+          <div class="panel">
+            <p class="hint" style="margin-top:0">在 Coolify → Keys &amp; Tokens → API Tokens 建立權杖,需要
+              <b>read:sensitive</b>(讀回舊值以便還原)、<b>write</b>(修改變數)及 <b>deploy</b>(重啟)權限。權杖會加密儲存。
+              · Create a token in Coolify under Keys &amp; Tokens → API Tokens. It needs <b>read:sensitive</b> (so the old
+              value can be read back and rolled back to), <b>write</b> and <b>deploy</b>. It is stored encrypted.</p>
+            <div class="fieldlbl">Coolify 網址 Server URL</div>
+            <input type="text" id="cUrl" placeholder="https://coolify-kvm.aeondelightasia.online" autocomplete="off">
+            <div class="fieldlbl">API token</div>
+            <input type="text" id="cToken" placeholder="貼上新的權杖以取代現有的 · paste a new token to replace the saved one" autocomplete="off">
+            <div class="hint" id="cState">…</div>
+            <div class="modal-acts">
+              <button class="btn primary" id="cSave">儲存 Save</button>
+              <button class="btn ghost" id="cTest">測試連線 Test connection</button>
+            </div>
+          </div>
+          <div class="panel" id="cResult" hidden>
+            <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
+            <dl class="kv" id="cProbe"></dl>
+            <p class="hint" id="cNote"></p>
+          </div>
+        </section>
+
+        <!-- Alerts -->
+        <section id="view-alerts" hidden>
+          <h1 class="sect">電郵提醒 Alerts</h1>
+          <div class="panel">
+            <div class="banner warn" id="aNoGraph" hidden>未設定 Microsoft Graph,無法寄出郵件。 · Microsoft Graph is not configured, so no mail can be sent.</div>
+            <div class="fieldlbl">寄件信箱 Sender mailbox <span class="lh">(a real mailbox in the tenant)</span></div>
+            <input type="email" id="aSender" placeholder="itdept@aeondelightasia.com">
+            <div class="fieldlbl">收件人 Recipients <span class="lh">(comma separated)</span></div>
+            <textarea id="aRecipients" placeholder="itdept@aeondelightasia.com, itdept2@aeondelightasia.com"></textarea>
+            <div class="fieldlbl">提醒日數 Warn at <span class="lh">(days before expiry)</span></div>
+            <input type="text" id="aThresholds" placeholder="60, 30, 14, 7, 1">
+            <label class="chk"><input type="checkbox" id="aOnRotation" checked> 每次更新後寄出報告 · Email a report after every rotation</label>
+            <p class="hint">每個密碼在每個門檻只會寄一次。更換密碼後會重新計算。
+              · Each secret triggers each threshold once. Replacing the secret resets the counters.</p>
+            <div class="modal-acts">
+              <button class="btn primary" id="aSave">儲存 Save</button>
+              <button class="btn ghost" id="aTest">寄測試郵件 Send test email</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Audit -->
+        <section id="view-audit" hidden>
+          <h1 class="sect">稽核記錄 Audit log</h1>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>時間 When</th><th>誰 Who</th><th>動作 Action</th><th>對象 Target</th></tr></thead>
+              <tbody id="auditRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / edit application -->
+  <div class="modal-overlay" id="appModal" hidden><div class="modal-box wide">
+    <div class="modal-title" id="amTitle">加入應用程式 Add application</div>
+
+    <div id="amPickBlock">
+      <div class="fieldlbl">Entra 應用程式註冊 App registration <span class="lh">(owned by this tool)</span></div>
+      <select id="amPick"><option value="">Loading…</option></select>
+      <div class="hint" id="amPickHint"></div>
+    </div>
+
+    <div class="row2">
+      <div><div class="fieldlbl">顯示名稱 Display name</div><input type="text" id="amName"></div>
+      <div><div class="fieldlbl">App URL <span class="lh">(also the default health check)</span></div><input type="text" id="amUrl" placeholder="https://attendance.aeondelightasia.online"></div>
+    </div>
+    <div class="row2">
+      <div><div class="fieldlbl">負責人 Owner email</div><input type="email" id="amOwner" placeholder="itdept@aeondelightasia.com"></div>
+      <div><div class="fieldlbl">新密碼有效期 New secret lifetime <span class="lh">(months, 1–24)</span></div><input type="number" id="amLifetime" min="1" max="24" value="12"></div>
+    </div>
+    <div class="fieldlbl">備註 Notes</div><textarea id="amNotes"></textarea>
+
+    <label class="chk"><input type="checkbox" id="amAuto"> 自動更新密碼 · Rotate this secret automatically</label>
+    <div class="row2" style="margin-top:10px">
+      <div>
+        <div class="fieldlbl">更新時機 When to rotate</div>
+        <select id="amMode">
+          <option value="expiry">到期前 N 天 · N days before expiry</option>
+          <option value="monthly">每月 · Monthly</option>
+          <option value="manual">只限人手 · Manual only</option>
+        </select>
+      </div>
+      <div id="amDaysBlock">
+        <div class="fieldlbl">到期前天數 Days before expiry</div>
+        <input type="number" id="amDays" min="1" max="180" value="30">
+      </div>
+      <div id="amDayBlock" hidden>
+        <div class="fieldlbl">每月第幾日 Day of month <span class="lh">(1–28)</span></div>
+        <input type="number" id="amDay" min="1" max="28" value="1">
+      </div>
+    </div>
+    <label class="chk"><input type="checkbox" id="amActive" checked> 啟用 · Active</label>
+
+    <div class="modal-acts">
+      <button class="btn danger" id="amDelete" hidden>刪除 Remove</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="amCancel">取消 Cancel</button>
+      <button class="btn primary" id="amSave">儲存 Save</button>
+    </div>
+  </div></div>
+
+  <!-- Add / edit target -->
+  <div class="modal-overlay" id="tgtModal" hidden><div class="modal-box wide">
+    <div class="modal-title" id="tmTitle">加入傳送位置 Add delivery target</div>
+    <div class="fieldlbl">標籤 Label <span class="lh">(optional)</span></div><input type="text" id="tmLabel" placeholder="App service">
+    <div class="row2">
+      <div><div class="fieldlbl">Coolify 應用程式 Application</div><select id="tmApp"><option value="">…</option></select></div>
+      <div>
+        <div class="fieldlbl">環境變數 Variable</div>
+        <select id="tmVarPick"><option value="">— 自行輸入 type it below —</option></select>
+        <input type="text" id="tmVar" placeholder="SSO_CLIENT_SECRET" style="margin-top:6px">
+      </div>
+    </div>
+    <div class="fieldlbl">健康檢查網址 Health check URL <span class="lh">(blank = the app URL, for the first target)</span></div>
+    <input type="text" id="tmHealth" placeholder="https://attendance.aeondelightasia.online/api/health">
+    <label class="chk"><input type="checkbox" id="tmRestart" checked> 寫入後重啟應用程式 · Restart the application after writing</label>
+    <div class="hint" id="tmHint"></div>
+    <div class="modal-acts">
+      <button class="btn danger" id="tmDelete" hidden>刪除 Delete</button>
+      <button class="btn ghost" id="tmTest" hidden>測試 Test</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="tmCancel">取消 Cancel</button>
+      <button class="btn primary" id="tmSave">儲存 Save</button>
+    </div>
+  </div></div>
+
+<script src="/static/appreg.js"></script>
+<script src="/static/oneview-navbar.js"></script>
+<script src="/static/change-password.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = AR.$, $$ = AR.$$, esc = AR.esc, api = AR.api;
+  var apps = [], discovered = [], editingApp = null, editingTgt = null, tgtAppId = null;
+
+  // ---- View switching ----
+  var TITLES = { apps: "應用程式 Applications", targets: "傳送位置 Delivery targets",
+                 coolify: "Coolify 連線", alerts: "電郵提醒 Alerts", audit: "稽核記錄 Audit log" };
+  $$(".side-item").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = b.getAttribute("data-view");
+      $$(".side-item").forEach(function (x) { x.classList.toggle("on", x === b); });
+      ["apps", "targets", "coolify", "alerts", "audit"].forEach(function (k) { $("#view-" + k).hidden = k !== v; });
+      document.title = TITLES[v] + " — 設定 Configuration";
+      if (v === "coolify") loadCoolify();
+      if (v === "alerts") loadAlerts();
+      if (v === "audit") loadAudit();
+      if (v === "targets") loadTargets();
+    });
+  });
+
+  // ---- Applications ----
+  function loadApps() {
+    return api("GET", "/api/config/apps").then(function (d) {
+      apps = d.apps || [];
+      $("#appRows").innerHTML = apps.map(function (a) {
+        var policy = a.rotationMode === "monthly" ? "每月 " + a.monthlyDay + " 日 · monthly day " + a.monthlyDay
+          : a.rotationMode === "manual" ? "人手 Manual"
+          : "到期前 " + a.rotateBeforeDays + " 天 · " + a.rotateBeforeDays + "d before expiry";
+        return '<tr class="' + (a.active ? "" : "inactive") + '">' +
+          "<td><b>" + esc(a.name) + "</b></td>" +
+          '<td class="mono">' + esc(a.clientId || "—") + "</td>" +
+          "<td>" + (a.autoRotate ? '<span class="st on">開 On</span>' : '<span class="st off">關 Off</span>') + "</td>" +
+          '<td class="muted">' + esc(policy) + " · " + a.lifetimeMonths + "m</td>" +
+          "<td>" + (a.targetCount || '<span class="st warning">0</span>') + "</td>" +
+          "<td>" + (a.active ? '<span class="st on">啟用 Active</span>' : '<span class="st off">停用 Inactive</span>') + "</td>" +
+          '<td class="right"><button class="tbl-btn a-edit" data-id="' + a.id + '">編輯 Edit</button></td></tr>';
+      }).join("") || '<tr><td colspan="7" class="muted">未有應用程式。 · None yet.</td></tr>';
+      fillTargetApps();
+    });
+  }
+
+  $("#appRows").addEventListener("click", function (e) {
+    var b = e.target.closest(".a-edit");
+    if (b) openApp(apps.filter(function (x) { return String(x.id) === b.getAttribute("data-id"); })[0]);
+  });
+
+  function syncModeBlocks() {
+    var m = $("#amMode").value;
+    $("#amDaysBlock").hidden = m !== "expiry";
+    $("#amDayBlock").hidden = m !== "monthly";
+  }
+  $("#amMode").addEventListener("change", syncModeBlocks);
+
+  function openApp(a) {
+    editingApp = a || null;
+    $("#amTitle").textContent = a ? "編輯 Edit — " + a.name : "加入應用程式 Add application";
+    $("#amPickBlock").hidden = !!a;
+    $("#amDelete").hidden = !a;
+    $("#amName").value = a ? a.name : "";
+    $("#amUrl").value = a ? a.appUrl : "";
+    $("#amOwner").value = a ? a.ownerEmail : "";
+    $("#amNotes").value = a ? a.notes : "";
+    $("#amAuto").checked = a ? a.autoRotate : false;
+    $("#amMode").value = a ? a.rotationMode : "expiry";
+    $("#amDays").value = a ? a.rotateBeforeDays : 30;
+    $("#amDay").value = a ? a.monthlyDay : 1;
+    $("#amLifetime").value = a ? a.lifetimeMonths : 12;
+    $("#amActive").checked = a ? a.active : true;
+    $("#amPickHint").textContent = "";
+    syncModeBlocks();
+    $("#appModal").hidden = false;
+    if (!a) discover();
+  }
+
+  function discover() {
+    $("#amPick").innerHTML = '<option value="">Loading…</option>';
+    api("GET", "/api/config/discover").then(function (d) {
+      discovered = d.apps || [];
+      if (d.self) $("#selfSp").innerHTML = " 本系統的服務主體 · This tool's service principal: <b>" + esc(d.self.name) + "</b>";
+      var free = discovered.filter(function (x) { return !x.managedId; });
+      $("#amPick").innerHTML = '<option value="">— 請選擇 choose —</option>' + free.map(function (x) {
+        return '<option value="' + esc(x.objectId) + '">' + esc(x.name) + " — " + esc(x.clientId) + "</option>";
+      }).join("");
+      if (!free.length) {
+        $("#amPickHint").textContent = discovered.length
+          ? "所有擁有的註冊都已加入。 · Every registration this tool owns is already added."
+          : "本系統未被列為任何應用程式註冊的擁有者。請在 Entra 的 Owners 中加入本系統。 · " +
+            "This tool is not an Owner of any app registration yet — add it under Owners in Entra.";
+      }
+    }).catch(function (e) {
+      $("#amPick").innerHTML = '<option value="">—</option>';
+      $("#amPickHint").textContent = (e && e.message) || "Could not read app registrations.";
+    });
+  }
+
+  $("#amPick").addEventListener("change", function () {
+    var x = discovered.filter(function (d) { return d.objectId === $("#amPick").value; })[0];
+    if (!x) return;
+    if (!$("#amName").value) $("#amName").value = x.name;
+    var r = (x.redirectUris || [])[0];
+    if (!$("#amUrl").value && r) $("#amUrl").value = r.replace(/\/api\/auth\/.*$/, "").replace(/\/auth\/v1\/callback$/, "");
+    var secs = (x.credentials || []).filter(function (c) { return c.kind === "secret"; });
+    $("#amPickHint").textContent = secs.length
+      ? secs.length + " 個密碼,最遲到期 " + String(secs[secs.length - 1].endsAt).slice(0, 10) +
+        " · " + secs.length + " secret(s), latest expiry " + String(secs[secs.length - 1].endsAt).slice(0, 10)
+      : "此註冊目前沒有用戶端密碼。 · This registration has no client secret yet.";
+  });
+
+  $("#amCancel").addEventListener("click", function () { $("#appModal").hidden = true; });
+  $("#amSave").addEventListener("click", function () {
+    var b = {
+      name: $("#amName").value.trim(),
+      appUrl: $("#amUrl").value.trim(),
+      ownerEmail: $("#amOwner").value.trim(),
+      notes: $("#amNotes").value,
+      autoRotate: $("#amAuto").checked,
+      rotationMode: $("#amMode").value,
+      rotateBeforeDays: $("#amDays").value,
+      monthlyDay: $("#amDay").value,
+      lifetimeMonths: $("#amLifetime").value,
+      active: $("#amActive").checked
+    };
+    var p;
+    if (editingApp) p = api("PUT", "/api/config/apps/" + editingApp.id, b);
+    else {
+      if (!$("#amPick").value) return AR.msg("請先選擇 · Choose a registration", "請在上方選擇一個 Entra 應用程式註冊。 · Pick an Entra app registration first.");
+      b.entraObjectId = $("#amPick").value;
+      p = api("POST", "/api/config/apps", b);
+    }
+    $("#amSave").disabled = true;
+    p.then(function () { $("#appModal").hidden = true; AR.toast("已儲存 · Saved"); return loadApps(); })
+      .catch(AR.handleErr).then(function () { $("#amSave").disabled = false; });
+  });
+  $("#amDelete").addEventListener("click", function () {
+    if (!editingApp) return;
+    if (!confirm("從本系統移除 " + editingApp.name + "?\n\nRemove " + editingApp.name + " from this tool?\n\n" +
+      "The Entra app registration and its secrets are NOT touched — only this tool stops tracking it.")) return;
+    api("DELETE", "/api/config/apps/" + editingApp.id)
+      .then(function () { $("#appModal").hidden = true; AR.toast("已移除 · Removed"); return loadApps(); })
+      .catch(AR.handleErr);
+  });
+  $("#addAppBtn").addEventListener("click", function () { openApp(null); });
+
+  // ---- Targets ----
+  function fillTargetApps() {
+    var sel = $("#tgtApp");
+    var keep = sel.value;
+    sel.innerHTML = '<option value="">— 請選擇應用程式 choose an application —</option>' + apps.map(function (a) {
+      return '<option value="' + a.id + '">' + esc(a.name) + "</option>";
+    }).join("");
+    if (keep) sel.value = keep;
+  }
+  $("#tgtApp").addEventListener("change", function () {
+    tgtAppId = parseInt($("#tgtApp").value, 10) || null;
+    $("#addTgtBtn").disabled = !tgtAppId;
+    loadTargets();
+  });
+
+  function loadTargets() {
+    if (!tgtAppId) { $("#tgtRows").innerHTML = '<tr><td colspan="6" class="muted">請先選擇應用程式。 · Choose an application.</td></tr>'; return Promise.resolve(); }
+    return api("GET", "/api/config/apps/" + tgtAppId + "/targets").then(function (d) {
+      $("#tgtRows").innerHTML = (d.targets || []).map(function (t) {
+        return "<tr><td>" + esc(t.label || "—") + "</td>" +
+          "<td>" + esc(t.app_name || t.app_uuid) +
+            (t.app_name ? '<div class="sub muted mono">' + esc(String(t.app_uuid).slice(0, 12)) + "</div>" : "") + "</td>" +
+          '<td class="mono">' + esc(t.var_name) + "</td>" +
+          "<td>" + (t.restart ? "是 Yes" : "否 No") + "</td>" +
+          "<td>" + (t.health_url ? esc(t.health_url) : '<span class="muted">—</span>') + "</td>" +
+          '<td class="right"><button class="tbl-btn t-edit" data-id="' + t.id + '">編輯 Edit</button></td></tr>';
+      }).join("") || '<tr><td colspan="6" class="muted">未設定。 · None configured.</td></tr>';
+      window._targets = d.targets || [];
+    }).catch(AR.handleErr);
+  }
+
+  $("#tgtRows").addEventListener("click", function (e) {
+    var b = e.target.closest(".t-edit");
+    if (b) openTarget((window._targets || []).filter(function (t) { return String(t.id) === b.getAttribute("data-id"); })[0]);
+  });
+  $("#addTgtBtn").addEventListener("click", function () { openTarget(null); });
+
+  function openTarget(t) {
+    editingTgt = t || null;
+    $("#tmTitle").textContent = t ? "編輯傳送位置 Edit delivery target" : "加入傳送位置 Add delivery target";
+    $("#tmLabel").value = t ? t.label : "";
+    $("#tmVar").value = t ? t.var_name : "";
+    $("#tmHealth").value = t ? t.health_url : "";
+    $("#tmRestart").checked = t ? t.restart : true;
+    $("#tmDelete").hidden = !t;
+    $("#tmTest").hidden = !t;
+    $("#tmHint").textContent = "";
+    $("#tgtModal").hidden = false;
+    loadApplications(t);
+  }
+
+  function fillSel(sel, items, selected, placeholder) {
+    sel.innerHTML = '<option value="">' + placeholder + "</option>" + items.map(function (i) {
+      return '<option value="' + esc(i.id) + '"' + (i.id === selected ? " selected" : "") + ">" + esc(i.name) + "</option>";
+    }).join("");
+  }
+
+  function loadApplications(t) {
+    fillSel($("#tmApp"), [], "", "Loading…");
+    return api("GET", "/api/config/coolify/applications").then(function (d) {
+      var apps = (d.applications || []).map(function (a) {
+        return { id: a.uuid, name: a.name + (a.fqdn ? "  —  " + a.fqdn.replace(/^https?:\/\//, "") : "") };
+      });
+      fillSel($("#tmApp"), apps, t ? t.app_uuid : "", "— 請選擇 choose —");
+      if (t && t.app_uuid) return loadVars();
+    }).catch(function (e) {
+      fillSel($("#tmApp"), [], "", "—");
+      $("#tmHint").textContent = (e && e.message) || "Could not read Coolify applications.";
+    });
+  }
+
+  function loadVars() {
+    var a = $("#tmApp").value;
+    fillSel($("#tmVarPick"), [], "", "— 自行輸入 type it below —");
+    if (!a) return Promise.resolve();
+    return api("GET", "/api/config/coolify/variables?app=" + encodeURIComponent(a))
+      .then(function (d) {
+        $("#tmVarPick").innerHTML = '<option value="">— 自行輸入 type it below —</option>' + (d.keys || []).map(function (k) {
+          return '<option value="' + esc(k) + '"' + (k === $("#tmVar").value ? " selected" : "") + ">" + esc(k) + "</option>";
+        }).join("");
+        $("#tmHint").textContent = d.readable ? "" :
+          "Coolify 沒有回傳變數內容(權杖缺少 read:sensitive),更新前無法備份舊值。 · Coolify did not return variable values " +
+          "(the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
+      }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+  }
+
+  $("#tmApp").addEventListener("change", function () { loadVars().catch(AR.handleErr); });
+  $("#tmVarPick").addEventListener("change", function () { if ($("#tmVarPick").value) $("#tmVar").value = $("#tmVarPick").value; });
+
+  $("#tmCancel").addEventListener("click", function () { $("#tgtModal").hidden = true; });
+  $("#tmSave").addEventListener("click", function () {
+    var sel = function (s) { var o = $(s).selectedOptions[0]; return o ? o.textContent : ""; };
+    var b = {
+      label: $("#tmLabel").value.trim(),
+      appUuid: $("#tmApp").value,
+      appName: (sel("#tmApp").split("  —  ")[0] || "").trim(),
+      varName: $("#tmVar").value.trim(),
+      restart: $("#tmRestart").checked,
+      healthUrl: $("#tmHealth").value.trim()
+    };
+    var p = editingTgt ? api("PUT", "/api/config/targets/" + editingTgt.id, b)
+                       : api("POST", "/api/config/apps/" + tgtAppId + "/targets", b);
+    $("#tmSave").disabled = true;
+    p.then(function () { $("#tgtModal").hidden = true; AR.toast("已儲存 · Saved"); return loadTargets().then(loadApps); })
+      .catch(AR.handleErr).then(function () { $("#tmSave").disabled = false; });
+  });
+  $("#tmDelete").addEventListener("click", function () {
+    if (!editingTgt) return;
+    if (!confirm("刪除這個傳送位置?\n\nDelete this delivery target?")) return;
+    api("DELETE", "/api/config/targets/" + editingTgt.id)
+      .then(function () { $("#tgtModal").hidden = true; AR.toast("已刪除 · Deleted"); return loadTargets().then(loadApps); })
+      .catch(AR.handleErr);
+  });
+  $("#tmTest").addEventListener("click", function () {
+    if (!editingTgt) return;
+    $("#tmTest").disabled = true;
+    api("POST", "/api/config/targets/" + editingTgt.id + "/test").then(function (r) {
+      AR.msg("測試結果 · Test result",
+        (r.exists ? "✓ 變數存在 · the variable exists" + (r.hint ? " (" + r.hint + ")" : "") : "✕ 變數不存在,更新時會新增 · the variable does not exist yet; a rotation would create it") +
+        "\n" + (r.readable ? "✓ 可讀回舊值,支援還原 · the current value can be read back, so rollback is possible"
+                           : "！ 無法讀回舊值 · the current value cannot be read back") +
+        (r.health ? "\n" + (r.health.ok ? "✓ 健康檢查 HTTP " + r.health.status : "✕ 健康檢查失敗 · health check failed: " + (r.health.error || "HTTP " + r.health.status)) : ""));
+    }).catch(AR.handleErr).then(function () { $("#tmTest").disabled = false; });
+  });
+
+  // ---- Coolify ----
+  function loadCoolify() {
+    return api("GET", "/api/config/coolify").then(function (d) {
+      $("#cUrl").value = d.baseUrl || "";
+      $("#cState").textContent = d.configured
+        ? (d.fromEnv ? "已由 COOLIFY_URL / COOLIFY_API_TOKEN 環境變數提供。 · Supplied by the COOLIFY_URL / COOLIFY_API_TOKEN environment variables."
+                     : "已儲存連線(權杖已加密)。 · Connected; the token is stored encrypted.")
+        : "未設定。 · Not configured.";
+      $("#cUrl").disabled = !!d.fromEnv;
+      $("#cToken").disabled = !!d.fromEnv;
+      $("#cSave").disabled = !!d.fromEnv;
+    }).catch(AR.handleErr);
+  }
+  $("#cSave").addEventListener("click", function () {
+    var u = $("#cUrl").value.trim(), t = $("#cToken").value.trim();
+    if (!u) return AR.msg("請輸入網址 · Enter the server URL", "例如 https://coolify-kvm.aeondelightasia.online");
+    if (!t) return AR.msg("請輸入權杖 · Enter a token", "貼上 Coolify API token。 · Paste the Coolify API token.");
+    $("#cSave").disabled = true;
+    api("POST", "/api/config/coolify", { baseUrl: u, token: t }).then(function () {
+      $("#cToken").value = ""; AR.toast("已儲存 · Saved"); return loadCoolify();
+    }).catch(AR.handleErr).then(function () { $("#cSave").disabled = false; });
+  });
+  $("#cTest").addEventListener("click", function () {
+    $("#cTest").disabled = true;
+    $("#cResult").hidden = true;
+    api("GET", "/api/config/coolify/test").then(function (r) {
+      $("#cProbe").innerHTML = [
+        ["伺服器 Server", r.baseUrl || "—"],
+        ["團隊 Team", r.team || "(not returned)"],
+        ["可見應用程式 Applications visible", String(r.applications)],
+        ["可讀回舊值 Can read values",
+          r.canReadValues === null ? "— (nothing to check against)"
+            : r.canReadValues ? "✓ 是 yes" : "✕ 否 no — rollback would be limited"],
+        ["整體 Overall",
+          r.ok && r.canReadValues !== false ? "✓ 可用於自動更新 · ready for auto-rotation"
+            : r.ok ? "！ 可連線,但未能讀回舊值 · connected, but values are not readable"
+            : "✕ 未能自動更新 · not usable for auto-rotation"]
+      ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
+      $("#cNote").textContent = r.note || "";
+      $("#cResult").hidden = false;
+    }).catch(AR.handleErr).then(function () { $("#cTest").disabled = false; });
+  });
+
+  // ---- Alerts ----
+  function loadAlerts() {
+    return api("GET", "/api/config/alerts").then(function (d) {
+      $("#aNoGraph").hidden = d.graph;
+      $("#aSender").value = d.alerts.sender || "";
+      $("#aRecipients").value = (d.alerts.recipients || []).join(", ");
+      $("#aThresholds").value = (d.alerts.thresholds || []).join(", ");
+      $("#aOnRotation").checked = d.alerts.onRotation !== false;
+    }).catch(AR.handleErr);
+  }
+  $("#aSave").addEventListener("click", function () {
+    $("#aSave").disabled = true;
+    api("PUT", "/api/config/alerts", {
+      sender: $("#aSender").value, recipients: $("#aRecipients").value,
+      thresholds: $("#aThresholds").value, onRotation: $("#aOnRotation").checked
+    }).then(function () { AR.toast("已儲存 · Saved"); return loadAlerts(); })
+      .catch(AR.handleErr).then(function () { $("#aSave").disabled = false; });
+  });
+  $("#aTest").addEventListener("click", function () {
+    $("#aTest").disabled = true;
+    api("POST", "/api/config/alerts/test")
+      .then(function () { AR.msg("已寄出 · Sent", "測試郵件已寄出,請檢查收件匣。 · The test email was sent — check the inbox (and junk)."); })
+      .catch(AR.handleErr).then(function () { $("#aTest").disabled = false; });
+  });
+
+  // ---- Audit ----
+  function loadAudit() {
+    return api("GET", "/api/config/audit?limit=150").then(function (d) {
+      $("#auditRows").innerHTML = (d.entries || []).map(function (e) {
+        return '<tr><td class="nowrap">' + esc(AR.fmtDateTime(e.at)) + "</td><td>" + esc(e.email || "—") +
+          "</td><td>" + esc(e.action) + "</td><td>" + esc(e.target || "—") + "</td></tr>";
+      }).join("") || '<tr><td colspan="4" class="muted">—</td></tr>';
+    }).catch(AR.handleErr);
+  }
+
+  // ---- Boot ----
+  api("GET", "/api/config/status").then(function (s) {
+    if (!s.allowed) { $("#denied").hidden = false; return; }
+    $("#cfg").hidden = false;
+    return api("GET", "/api/auth/me").then(function (d) {
+      if (window.oneviewNavbarSetUser) window.oneviewNavbarSetUser(d.user);
+    }).then(loadApps);
+  }).catch(AR.handleErr);
+})();
+</script>
+</body>
+</html>

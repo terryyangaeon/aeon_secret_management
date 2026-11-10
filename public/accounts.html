@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>帳戶管理 Account Management — 密鑰管理 Secret Management</title>
+<link rel="icon" href="/static/favicon.png">
+<script>if (window.self !== window.top) document.documentElement.classList.add("in-iframe");</script>
+<link rel="stylesheet" href="/static/oneview-navbar.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", Roboto, sans-serif; background: #f4f6fa; color: #1f2937; font-size: 13px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 32px 60px; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .pagetitle { font-size: 20px; font-weight: 800; color: #90207a; margin: 0; }
+  .denied { background: #fff; border: 1px solid #e7e5e4; border-radius: 12px; padding: 24px; color: #57534e; }
+  .btn { padding: 9px 16px; border: 1px solid transparent; border-radius: 8px; font-weight: 600; cursor: pointer; font: inherit; }
+  .btn.primary { background: #FFCC00; color: #1c1917; } .btn.primary:hover { background: #f0c000; }
+  .btn.ghost { background: #fff; border-color: #d6d3d1; color: #44403c; } .btn.ghost:hover { background: #fafaf9; }
+  .btn.danger { background: #fff; border-color: #fecaca; color: #b91c1c; } .btn.danger:hover { background: #fef2f2; }
+  .tablewrap { overflow-x: auto; background: #fff; border: 1px solid #e7e5e4; border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #1e3a5f; color: #fff; text-align: left; padding: 12px 14px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid #f0eee6; font-size: 13px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #dcfce7; color: #14532d; }
+  .role-badge.admin { background: #fee2e2; color: #991b1b; }
+  .st { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .st.on { background: #dcfce7; color: #14532d; } .st.off { background: #f5f5f4; color: #a8a29e; }
+  .sites-cell { font-size: 12px; color: #57534e; max-width: 260px; }
+  .tbl-btn { background: #FFCC00; color: #1c1917; border: 0; border-radius: 8px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
+  .tbl-btn:hover { background: #f0c000; }
+  .fieldlbl { font-size: 11px; color: #78716c; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .fieldlbl .lh { text-transform: none; letter-spacing: 0; color: #a8a29e; font-weight: 600; }
+  input[type=text], input[type=email], input[type=password], select { width: 100%; padding: 9px 12px; border: 1px solid #d6d3d1; border-radius: 8px; font: inherit; box-sizing: border-box; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .chk input { width: auto; }
+  .pw-row { display: flex; gap: 8px; }
+  .pw-row input:disabled { background: #f5f5f4; color: #a8a29e; cursor: not-allowed; }
+  .pw-gen:disabled { opacity: .45; cursor: not-allowed; }
+  .pw-gen:disabled:hover { background: #fff; border-color: #d6d3d1; color: #44403c; }
+  .pw-block.off .fieldlbl { color: #c4c0bc; }
+  .type-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #e0e7ff; color: #1e3a5f; }
+  .type-badge.email { background: #f5f5f4; color: #44403c; }
+  .type-note { font-size: 11.5px; color: #78716c; margin-top: 4px; }
+  .pw-row input { flex: 1; }
+  .pw-gen { white-space: nowrap; padding: 9px 12px; border: 1px solid #d6d3d1; background: #fff; border-radius: 8px; font: inherit; font-weight: 600; color: #44403c; cursor: pointer; }
+  .pw-gen:hover { background: #fafaf9; border-color: #90207a; color: #90207a; }
+  .site-checks { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px; }
+  .site-checks label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .site-checks input { width: auto; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15,12,8,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1500; }
+  .modal-box { background: #fff; border-radius: 14px; padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,.3); max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 800; color: #90207a; margin-bottom: 6px; }
+  .modal-acts { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: #1c1917; color: #fff; padding: 11px 18px; border-radius: 10px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.25); opacity: 0; transition: .2s; z-index: 1600; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<!--#navbar-->
+
+  <div class="wrap">
+    <div class="head-row">
+      <h1 class="pagetitle">帳戶管理 Account Management</h1>
+      <button class="btn primary" id="addUserBtn" hidden>+ Add User</button>
+    </div>
+    <div class="denied" id="denied" hidden>只有管理員可以管理帳戶。 · Only admins can manage accounts.</div>
+    <div class="tablewrap" id="tableWrap" hidden>
+      <table>
+        <thead><tr><th>Email</th><th>Name</th><th>Type</th><th>Role</th><th>業務單位 Business units</th><th>Status</th><th style="text-align:right;">Actions</th></tr></thead>
+        <tbody id="userRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Add/Edit user modal -->
+  <div class="modal-overlay" id="userModal" hidden><div class="modal-box">
+    <div class="modal-title" id="umTitle">Add User</div>
+    <div class="fieldlbl">Account type</div>
+    <select id="umType">
+      <option value="sso">SSO - AEON Delight Email</option>
+      <option value="email">Email - Email and Assigned Password</option>
+    </select>
+    <div class="type-note" id="umTypeNote"></div>
+    <div class="fieldlbl">Email</div><input type="email" id="umEmail" placeholder="user@aeondelightasia.com">
+    <div class="fieldlbl">Name</div><input type="text" id="umName" placeholder="Full name">
+    <div class="pw-block" id="umPwBlock">
+      <div class="fieldlbl" id="umPwLabel">Password <span class="lh">(6 characters)</span></div>
+      <div class="pw-row">
+        <input type="text" id="umPass" autocomplete="new-password" placeholder="Set a password">
+        <button type="button" class="pw-gen" id="umPwGen">Generate</button>
+      </div>
+    </div>
+    <div class="fieldlbl">Role</div>
+    <select id="umRole">
+      <option value="user">User — view only, scoped by business unit</option>
+      <option value="admin">Admin — full access, all business units</option>
+    </select>
+    <label class="chk" style="margin-top:12px;"><input type="checkbox" id="umActive" checked> <span>Active</span></label>
+    <div class="fieldlbl">Business unit access <span id="umSiteNote" style="text-transform:none; font-weight:400;"></span></div>
+    <div class="site-checks" id="umSites"></div>
+    <div class="modal-acts">
+      <button class="btn danger" id="umDelete" hidden>Delete</button><span style="flex:1;"></span>
+      <button class="btn ghost" id="umCancel">Cancel</button><button class="btn primary" id="umSave">Save</button>
+    </div>
+  </div></div>
+
+  <!-- Message dialog (e.g. the email isn't in the company directory); closes with its button only -->
+  <div class="modal-overlay" id="msgModal" hidden style="z-index:1700;"><div class="modal-box" style="max-width:460px;">
+    <div class="modal-title" id="msgTitle">無法儲存 · Can't save</div>
+    <div id="msgText" style="font-size:13.5px;line-height:1.6;color:#44403c;white-space:pre-line;margin-top:8px;"></div>
+    <div class="modal-acts"><span style="flex:1;"></span><button class="btn primary" id="msgOk">OK</button></div>
+  </div></div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/oneview-navbar.js"></script>
+  <script src="/static/change-password.js"></script>
+  <script>
+    var $ = function (s, r) { return (r || document).querySelector(s); };
+    var users = [], sites = [];   // sites = business units {code, name}
+    var toastTimer;
+    function toast(m) { var t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]; }); }
+    function roleLabel(r) { return r === "admin" ? "Admin" : "User"; }
+
+    function api(method, path, body) {
+      return fetch(path, { method: method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
+        .then(function (r) { if (r.status === 401) { location.href = "/login.html?next=" + encodeURIComponent(location.pathname); throw { h: 1 }; } return r.json().then(function (j) { if (!r.ok) { var er = new Error(j.message || j.error || "Request failed"); er.status = r.status; er.code = j.code; throw er; } return j; }); });
+    }
+    function handleErr(e) { if (e && e.h) return; toast((e && e.message) || "Something went wrong."); }
+    function showMessage(title, text) { $("#msgTitle").textContent = title; $("#msgText").textContent = text; $("#msgModal").hidden = false; $("#msgOk").focus(); }
+    $("#msgOk").addEventListener("click", function () { $("#msgModal").hidden = true; });
+
+    function renderRows() {
+      var body = $("#userRows");
+      body.innerHTML = users.map(function (u) {
+        var siteNames = (u.bus || []).map(function (code) {
+          var s = sites.filter(function (x) { return x.code === code; })[0];
+          return s ? s.code : code;
+        });
+        var sitesTxt = u.role === "admin" ? "All (Admin)" : (siteNames.length ? siteNames.join(", ") : "— none granted —");
+        return '<tr data-email="' + esc(u.email) + '">' +
+          '<td>' + esc(u.email) + '</td>' +
+          '<td>' + esc(u.name || "—") + '</td>' +
+          '<td>' + (u.accountType === "sso" ? '<span class="type-badge" title="Signs in with the AEON Delight (Asia) company account">SSO</span>'
+                                             : '<span class="type-badge email" title="Signs in with email and password">Email</span>') + '</td>' +
+          '<td><span class="role-badge ' + (u.role === "admin" ? "admin" : "") + '">' + roleLabel(u.role) + '</span></td>' +
+          '<td class="sites-cell">' + esc(sitesTxt) + '</td>' +
+          '<td><span class="st ' + (u.active ? "on" : "off") + '">' + (u.active ? "Active" : "Inactive") + '</span></td>' +
+          '<td style="text-align:right;"><button class="tbl-btn u-edit">Edit</button></td></tr>';
+      }).join("");
+    }
+    $("#userRows").addEventListener("click", function (e) { if (!e.target.closest(".u-edit")) return; var email = e.target.closest("tr").getAttribute("data-email"); openUserModal(users.filter(function (x) { return x.email === email; })[0]); });
+    $("#addUserBtn").addEventListener("click", function () { openUserModal(null); });
+
+    var editingEmail = null, editingUser = null, ssoOn = false;
+    fetch("/api/auth/options", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (o) { ssoOn = !!o.sso; }).catch(function () {});
+    function renderSiteChecks(selected) {
+      selected = selected || [];
+      $("#umSites").innerHTML = sites.length ? sites.map(function (s) {
+        return '<label><input type="checkbox" value="' + esc(s.code) + '"' + (selected.indexOf(s.code) >= 0 ? " checked" : "") + '> ' + esc(s.code) + ' — ' + esc(s.name) + '</label>';
+      }).join("") : '<span style="font-size:12px;color:#78716c;">No business units configured (see Configuration).</span>';
+    }
+    function syncSitesDisabled() {
+      var isAdmin = $("#umRole").value === "admin";
+      $("#umSiteNote").textContent = isAdmin ? "— Admins can access all business units" : "";
+      Array.prototype.forEach.call($("#umSites").querySelectorAll("input"), function (i) { i.disabled = isAdmin; });
+    }
+    $("#umRole").addEventListener("change", syncSitesDisabled);
+
+    function openUserModal(u) {
+      editingEmail = u ? u.email : null;
+      $("#umTitle").textContent = u ? "Edit User" : "Add User";
+      $("#umEmail").value = u ? u.email : ""; $("#umEmail").readOnly = !!u;
+      $("#umName").value = u ? (u.name || "") : "";
+      $("#umPass").value = "";
+      editingUser = u || null;
+      $("#umType").value = u ? u.accountType : (ssoOn ? "sso" : "email");
+      applyType();
+      $("#umRole").value = u ? u.role : "user";
+      $("#umActive").checked = u ? !!u.active : true;
+      renderSiteChecks(u ? u.bus : []);
+      syncSitesDisabled();
+      $("#umDelete").hidden = !u;
+      $("#userModal").hidden = false;
+    }
+    // SSO accounts have no password here, so the password field is greyed out.
+    function applyType() {
+      var sso = $("#umType").value === "sso", u = editingUser;
+      $("#umType").querySelector('option[value="sso"]').disabled = !ssoOn && !(u && u.accountType === "sso");
+      $("#umPass").disabled = sso; $("#umPwGen").disabled = sso;
+      $("#umPwBlock").classList.toggle("off", sso);
+      if (sso) $("#umPass").value = "";
+      $("#umTypeNote").textContent = sso
+        ? "以公司 Microsoft 帳戶登入,毋須密碼。 · Signs in with their company Microsoft account; no password needed."
+        : "以電郵及密碼登入。 · Signs in with this email and a password set here.";
+      if (sso) { $("#umPwLabel").innerHTML = 'Password <span class="lh">(not used for SSO accounts)</span>'; $("#umPass").placeholder = "Not needed"; }
+      else if (u && u.accountType === "email") { $("#umPwLabel").innerHTML = 'New password <span class="lh">(leave blank to keep current)</span>'; $("#umPass").placeholder = "Leave blank to keep current"; }
+      else { $("#umPwLabel").innerHTML = 'Password <span class="lh">(at least 6 characters)</span>'; $("#umPass").placeholder = "Set a password"; }
+    }
+    $("#umType").addEventListener("change", applyType);
+    function closeUserModal() { $("#userModal").hidden = true; editingEmail = null; editingUser = null; }
+    $("#umCancel").addEventListener("click", closeUserModal);
+    // Form dialogs close only via their buttons: a click on the backdrop can also come from
+    // selecting text in a field and releasing the mouse outside the dialog, which lost the input.
+    $("#umPwGen").addEventListener("click", function () {
+      var chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+      var arr = (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(new Uint32Array(8)) : null;
+      var out = "";
+      for (var i = 0; i < 8; i++) { var r = arr ? arr[i] : Math.floor(Math.random() * 0xffffffff); out += chars[r % chars.length]; }
+      $("#umPass").value = out; $("#umPass").focus();
+    });
+    $("#umSave").addEventListener("click", function () {
+      var email = $("#umEmail").value.trim().toLowerCase();
+      var pass = $("#umPass").value;
+      var type = $("#umType").value, needPw = type === "email" && !(editingUser && editingUser.accountType === "email");
+      if (type === "email" && (needPw || pass.length) && pass.length < 6) {
+        toast(needPw ? "Set a password of at least 6 characters for an Email account." : "New password must be at least 6 characters.");
+        $("#umPass").focus(); return;
+      }
+      if (type === "sso" && editingUser && editingUser.accountType === "email" &&
+          !confirm("Change " + editingEmail + " to SSO? Their current password will be removed and they will sign in with their company account.")) return;
+      var payload = {
+        name: $("#umName").value.trim(), role: $("#umRole").value, active: $("#umActive").checked,
+        bus: Array.prototype.map.call($("#umSites").querySelectorAll("input:checked"), function (i) { return i.value; })
+      };
+      payload.accountType = type;
+      var checking = type === "sso" && ssoOn && !(editingUser && editingUser.accountType === "sso");
+      if (type === "email" && pass.length) payload.password = pass;
+      var req;
+      if (editingEmail) req = api("PUT", "/api/accounts/" + encodeURIComponent(editingEmail), payload);
+      else { payload.email = email; req = api("POST", "/api/accounts", payload); }
+      var saveBtn = $("#umSave");
+      saveBtn.disabled = true; saveBtn.textContent = checking ? "Checking directory…" : "Saving…";
+      req.then(function () { closeUserModal(); load(); toast("Account saved."); })
+        .catch(function (e) {
+          if (e && e.h) return;
+          // Directory problems get a message dialog; the form stays open with its input.
+          if (e && /^(not_in_directory|directory_disabled|directory_unavailable)$/.test(e.code || "")) {
+            showMessage(e.code === "directory_unavailable" ? "無法檢查公司目錄 · Can't check the company directory" : "未能連結公司帳戶 · Not found in the company directory", e.message);
+          } else handleErr(e);
+        })
+        .then(function () { saveBtn.disabled = false; saveBtn.textContent = "Save"; });
+    });
+    $("#umDelete").addEventListener("click", function () {
+      if (!editingEmail) return;
+      if (!confirm('Delete account "' + editingEmail + '"?')) return;
+      api("DELETE", "/api/accounts/" + encodeURIComponent(editingEmail)).then(function () { closeUserModal(); load(); toast("Deleted."); }).catch(handleErr);
+    });
+
+    function load() {
+      api("GET", "/api/accounts").then(function (j) { users = j.accounts || []; sites = j.bus || []; renderRows(); $("#tableWrap").hidden = false; $("#addUserBtn").hidden = false; }).catch(function (e) { if (e && e.status === 403) { $("#denied").hidden = false; return; } handleErr(e); });
+    }
+    load();
+  </script>
+</body>
+</html>

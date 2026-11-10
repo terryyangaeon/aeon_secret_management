@@ -1,0 +1,19 @@
+{
+  "name": "aeon-secret-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AEON Delight OneView module — Secret Management (密鑰管理): Entra ID client-secret inventory, expiry alerts and automatic rotation",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "create-account": "node scripts/create-account.js",
+    "test": "node tests/run.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "pg": "^8.23.0"
+  }
+}

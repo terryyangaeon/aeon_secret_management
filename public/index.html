@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>密鑰管理 · Secret Management</title>
+<link rel="icon" href="/static/favicon.png">
+<script>if (window.self !== window.top) document.documentElement.classList.add("in-iframe");</script>
+<link rel="stylesheet" href="/static/oneview-navbar.css">
+<link rel="stylesheet" href="/static/appreg.css">
+<style>
+  .appname { font-weight: 700; color: #1c1917; }
+  .appname a { color: inherit; text-decoration: none; }
+  .appname a:hover { text-decoration: underline; }
+  .sub { font-size: 11.5px; color: #a8a29e; margin-top: 2px; }
+  .cfglink { font-size: 12px; }
+  html:not(.in-iframe) .iframe-only { display: none; }
+</style>
+</head>
+<body>
+<!--#navbar-->
+
+  <div class="wrap">
+    <div class="head-row">
+      <div>
+        <h1 class="pagetitle">密鑰管理 Secret Management</h1>
+        <p class="subtitle" id="sub">Entra ID client secrets — expiry and automatic rotation.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" id="refreshBtn" hidden>重新整理 Refresh from Entra</button>
+        <a class="btn ghost cfglink iframe-only" href="/config.html" target="_blank" rel="noopener" id="cfgLink" hidden>設定 Configuration ↗</a>
+      </div>
+    </div>
+
+    <div class="banner bad" id="bGraph" hidden></div>
+    <div class="banner warn" id="bCoolify" hidden></div>
+    <div class="banner info" id="bAlerts" hidden></div>
+    <div class="banner warn" id="bSched" hidden></div>
+
+    <div class="cards" id="cards" hidden>
+      <div class="card red"><div class="n" id="cExpired">0</div><div class="l">已過期 Expired</div></div>
+      <div class="card red"><div class="n" id="cCritical">0</div><div class="l">7 天內 Within 7 days</div></div>
+      <div class="card amber"><div class="n" id="cWarning">0</div><div class="l">30 天內 Within 30 days</div></div>
+      <div class="card green"><div class="n" id="cAuto">0</div><div class="l">自動更新 Auto-rotating</div></div>
+      <div class="card"><div class="n" id="cTotal">0</div><div class="l">合共 Applications</div></div>
+    </div>
+
+    <div class="denied" id="empty" hidden>
+      <p style="margin:0 0 8px"><b>未有已登記的應用程式。 · No applications registered yet.</b></p>
+      <p class="muted" style="margin:0">管理員可到 <a href="/config.html">設定 Configuration</a> 加入。
+        · An admin can add them in Configuration. Only app registrations where this tool is listed as an
+        <b>Owner</b> in Entra can be managed.</p>
+    </div>
+
+    <div class="tablewrap" id="tableWrap" hidden>
+      <table>
+        <thead><tr>
+          <th>應用程式 Application</th>
+          <th>目前密碼 Current secret</th>
+          <th>到期 Expires</th>
+          <th>剩餘 Days left</th>
+          <th>狀態 Status</th>
+          <th>自動更新 Auto-rotate</th>
+          <th>下次 Next</th>
+          <th class="right">　</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="head-row" style="margin:26px 0 12px">
+      <h2 class="pagetitle" style="font-size:16px">最近更新記錄 Recent rotations</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>時間 When</th><th>應用程式 Application</th><th>觸發 Trigger</th><th>結果 Result</th><th>詳情 Detail</th></tr></thead>
+        <tbody id="runRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Run detail -->
+  <div class="modal-overlay" id="runModal" hidden><div class="modal-box wide">
+    <div class="modal-title" id="rmTitle">Rotation</div>
+    <div id="rmBody"></div>
+    <div class="modal-acts"><span style="flex:1"></span><button class="btn ghost" id="rmClose">Close</button></div>
+  </div></div>
+
+<script src="/static/appreg.js"></script>
+<script src="/static/oneview-navbar.js"></script>
+<script src="/static/change-password.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = AR.$, esc = AR.esc, api = AR.api;
+  var isAdmin = false, apps = [], runs = [];
+
+  function load() {
+    return api("GET", "/api/apps").then(function (d) {
+      apps = d.apps || [];
+      banners(d);
+      render();
+      return api("GET", "/api/runs?limit=15");
+    }).then(function (d) {
+      runs = d.runs || [];
+      renderRuns();
+    }).catch(AR.handleErr);
+  }
+
+  function banners(d) {
+    var g = $("#bGraph"), z = $("#bCoolify"), a = $("#bAlerts"), s = $("#bSched");
+    g.hidden = d.graph;
+    if (!d.graph) g.textContent = "未設定 Microsoft Graph(SSO_TENANT_ID / SSO_CLIENT_ID / SSO_CLIENT_SECRET)," +
+      "所以無法讀取或更新密碼。 · Microsoft Graph is not configured, so secrets cannot be read or rotated.";
+    z.hidden = d.coolify;
+    if (!d.coolify) z.textContent = "未連線 Coolify — 可以監察到期日,但不能自動更新。 · " +
+      "Coolify is not connected: expiry is tracked, but secrets cannot be pushed to the apps automatically.";
+    a.hidden = d.alerts;
+    if (!d.alerts) a.textContent = "未設定電郵提醒。 · Email alerts are not configured — warnings will only appear on this page.";
+    s.hidden = d.rotateEnabled;
+    if (!d.rotateEnabled) s.textContent = "自動更新排程已關閉(ROTATE_ENABLED=0)。 · The rotation scheduler is switched off on this server.";
+  }
+
+  function render() {
+    var n = { expired: 0, critical: 0, warning: 0, auto: 0 };
+    apps.forEach(function (a) {
+      if (!a.active) return;
+      if (a.status === "expired") n.expired++;
+      else if (a.status === "critical") n.critical++;
+      else if (a.status === "warning") n.warning++;
+      if (a.autoRotate) n.auto++;
+    });
+    $("#cExpired").textContent = n.expired;
+    $("#cCritical").textContent = n.critical;
+    $("#cWarning").textContent = n.warning;
+    $("#cAuto").textContent = n.auto;
+    $("#cTotal").textContent = apps.length;
+    $("#cards").hidden = !apps.length;
+    $("#empty").hidden = !!apps.length;
+    $("#tableWrap").hidden = !apps.length;
+
+    $("#rows").innerHTML = apps.map(function (a) {
+      var cur = a.current;
+      var rotateBtn = isAdmin
+        ? '<button class="tbl-btn a-rot" data-id="' + a.id + '"' + (a.busy || !a.ready ? " disabled" : "") + ' title="' +
+          (a.ready ? "" : "No delivery target configured") + '">' + (a.busy ? "更新中…" : "立即更新 Rotate") + "</button> "
+        : "";
+      return '<tr class="' + (a.active ? "" : "inactive") + '">' +
+        '<td><div class="appname"><a href="/app.html?id=' + a.id + '">' + esc(a.name) + "</a></div>" +
+          '<div class="sub mono">' + esc(a.clientId || a.entraObjectId) + "</div></td>" +
+        "<td>" + (cur ? esc(cur.displayName || "(unnamed)") + (cur.hint ? ' <span class="muted mono">' + esc(cur.hint) + "…</span>" : "")
+                      : '<span class="muted">—</span>') + "</td>" +
+        '<td class="nowrap">' + esc(AR.fmtDate(a.endsAt)) + "</td>" +
+        '<td class="nowrap">' + esc(AR.fmtDays(a.daysLeft)) + "</td>" +
+        "<td>" + AR.statusPill(a.status) + (a.active ? "" : ' <span class="st off">停用 Inactive</span>') + "</td>" +
+        '<td>' + (a.autoRotate ? '<span class="st on">開 On</span>' : '<span class="st off">關 Off</span>') +
+          (a.ready ? "" : ' <span class="st warning" title="No delivery target">無目標</span>') + "</td>" +
+        '<td class="nowrap muted">' + esc(a.nextRotation ? AR.fmtDate(a.nextRotation) : "—") + "</td>" +
+        '<td class="right nowrap">' + rotateBtn +
+          '<a class="tbl-btn ghost" href="/app.html?id=' + a.id + '">詳情 Details</a></td>' +
+        "</tr>";
+    }).join("");
+  }
+
+  function renderRuns() {
+    if (!runs.length) { $("#runRows").innerHTML = '<tr><td colspan="5" class="muted">尚未有更新記錄。 · No rotations yet.</td></tr>'; return; }
+    $("#runRows").innerHTML = runs.map(function (r) {
+      var last = (r.steps || []).slice(-1)[0];
+      return '<tr><td class="nowrap">' + esc(AR.fmtDateTime(r.started_at)) + "</td>" +
+        "<td>" + esc(r.app_name) + "</td>" +
+        "<td>" + esc(r.trigger === "manual" ? "人手 Manual" + (r.actor ? " (" + r.actor + ")" : "") : "排程 Scheduled") + "</td>" +
+        "<td>" + AR.runPill(r.status) + "</td>" +
+        '<td><a href="#" class="r-open" data-id="' + r.id + '">' +
+          esc(r.error ? String(r.error).slice(0, 70) : last ? last.step : "view") + "</a></td></tr>";
+    }).join("");
+  }
+
+  $("#runRows").addEventListener("click", function (e) {
+    var a = e.target.closest(".r-open");
+    if (!a) return;
+    e.preventDefault();
+    var r = runs.filter(function (x) { return String(x.id) === a.getAttribute("data-id"); })[0];
+    if (!r) return;
+    $("#rmTitle").textContent = r.app_name + " — rotation #" + r.id;
+    $("#rmBody").innerHTML =
+      "<p>" + AR.runPill(r.status) + ' <span class="muted">' + esc(AR.fmtDateTime(r.started_at)) +
+        (r.finished_at ? " → " + esc(AR.fmtDateTime(r.finished_at)) : "") + "</span></p>" +
+      (r.error ? '<div class="banner bad">' + esc(r.error) + "</div>" : "") +
+      AR.stepsHtml(r.steps);
+    $("#runModal").hidden = false;
+  });
+  $("#rmClose").addEventListener("click", function () { $("#runModal").hidden = true; });
+
+  $("#rows").addEventListener("click", function (e) {
+    var b = e.target.closest(".a-rot");
+    if (!b) return;
+    var a = apps.filter(function (x) { return String(x.id) === b.getAttribute("data-id"); })[0];
+    if (!a) return;
+    if (!confirm("立即為 " + a.name + " 更新用戶端密碼?\n\nRotate the client secret for " + a.name + " now?\n\n" +
+      "A new secret is created, written to " + a.targetCount + " target(s), the service is restarted and health-checked. " +
+      "The old secret is deleted only if that all succeeds.")) return;
+    b.disabled = true;
+    api("POST", "/api/apps/" + a.id + "/rotate").then(function () {
+      AR.toast("更新已開始 · Rotation started — this page will update as it runs.");
+      setTimeout(load, 3000);
+    }).catch(function (e) { b.disabled = false; AR.handleErr(e); });
+  });
+
+  $("#refreshBtn").addEventListener("click", function () {
+    var b = $("#refreshBtn");
+    b.disabled = true; b.textContent = "Refreshing…";
+    api("POST", "/api/config/refresh").then(function (r) {
+      AR.toast("已更新 " + r.updated + "/" + r.checked + " 個應用程式 · Refreshed " + r.updated + " of " + r.checked);
+      if (r.failed && r.failed.length) {
+        AR.msg("部分應用程式讀取失敗 · Some applications could not be read",
+          r.failed.map(function (f) { return f.app + ": " + f.error; }).join("\n\n"));
+      }
+      return load();
+    }).catch(AR.handleErr).then(function () {
+      b.disabled = false; b.textContent = "重新整理 Refresh from Entra";
+    });
+  });
+
+  api("GET", "/api/auth/me").then(function (d) {
+    isAdmin = d.user && d.user.role === "admin";
+    if (window.oneviewNavbarSetUser) window.oneviewNavbarSetUser(d.user);
+    $("#refreshBtn").hidden = !isAdmin;
+    $("#cfgLink").hidden = !isAdmin;
+    return load();
+  }).catch(AR.handleErr);
+
+  // Keep the page honest while a rotation runs, but don't poll a hidden tab.
+  setInterval(function () { if (!document.hidden && $("#runModal").hidden) load(); }, 30000);
+})();
+</script>
+</body>
+</html>
