@@ -41,8 +41,10 @@
             <button class="btn primary" id="addAppBtn">+ 加入應用程式 Add application</button>
           </div>
           <div class="banner info">
-            只有在 Entra 中把本系統列為 <b>擁有者 Owner</b> 的應用程式註冊才會在此出現。
-            · Only app registrations where this tool is listed as an <b>Owner</b> in Entra appear here.
+            加入後即可監察到期日。<b>自動更新</b>另外需要兩樣:在 Entra 中把本系統列為 <b>擁有者 Owner</b>
+            (用 <code>scripts/add-owner.ps1</code>),以及設定一個<b>傳送位置</b>。
+            · Adding a registration tracks its expiry. <b>Rotation</b> additionally needs this tool to be an
+            <b>Owner</b> in Entra (<code>scripts/add-owner.ps1</code>) <i>and</i> a <b>delivery target</b>.
             <span id="selfSp"></span>
           </div>
           <div class="tablewrap">
