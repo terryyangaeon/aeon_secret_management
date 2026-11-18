@@ -44,6 +44,7 @@
       <div class="card amber"><div class="n" id="cWarning">0</div><div class="l">30 天內 Within 30 days</div></div>
       <div class="card green"><div class="n" id="cAuto">0</div><div class="l">自動更新 Auto-rotating</div></div>
       <div class="card"><div class="n" id="cTotal">0</div><div class="l">合共 Applications</div></div>
+      <div class="card amber"><div class="n" id="cUntracked">0</div><div class="l">未納入管理 Not tracked</div></div>
     </div>
 
     <div class="denied" id="empty" hidden>
@@ -68,6 +69,30 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
+
+    <div id="untrackedBlock" hidden>
+      <div class="head-row" style="margin:26px 0 12px">
+        <div>
+          <h2 class="pagetitle" style="font-size:16px">未納入管理 Not tracked</h2>
+          <p class="subtitle" id="untrackedSub"></p>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>應用程式註冊 Registration</th>
+            <th>Client ID</th>
+            <th>到期 Expires</th>
+            <th>剩餘 Days left</th>
+            <th>狀態 Status</th>
+            <th>可更新 Rotatable</th>
+          </tr></thead>
+          <tbody id="untrackedRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="banner info" id="bReadAll" hidden></div>
 
     <div class="head-row" style="margin:26px 0 12px">
       <h2 class="pagetitle" style="font-size:16px">最近更新記錄 Recent rotations</h2>
@@ -105,6 +130,9 @@
     }).then(function (d) {
       runs = d.runs || [];
       renderRuns();
+      return api("GET", "/api/unmanaged");
+    }).then(function (d) {
+      renderUntracked(d);
     }).catch(AR.handleErr);
   }
 
@@ -160,6 +188,42 @@
         '<td class="right nowrap">' + rotateBtn +
           '<a class="tbl-btn ghost" href="/app.html?id=' + a.id + '">詳情 Details</a></td>' +
         "</tr>";
+    }).join("");
+  }
+
+  // Registrations Entra knows about that this tool is not tracking. Without the
+  // read-only Application.Read.All this can only ever list owned-but-not-added
+  // ones, so say so rather than implying the tenant is clean.
+  function renderUntracked(d) {
+    var apps = (d && d.apps) || [];
+    $("#cUntracked").textContent = apps.length;
+    $("#untrackedBlock").hidden = !apps.length;
+
+    var b = $("#bReadAll");
+    b.hidden = !!(d && d.tenantWide);
+    if (!b.hidden) {
+      b.innerHTML = "此清單只包含本系統已擁有的註冊。加入唯讀的 <b>Application.Read.All</b> 權限後," +
+        "儀表板便會顯示租戶內<b>所有</b>應用程式註冊,不會再有遺漏。 · This list only covers registrations this " +
+        "tool already owns. Grant the read-only <b>Application.Read.All</b> permission and the dashboard " +
+        "will show <b>every</b> registration in the tenant, so none can expire unnoticed.";
+    }
+
+    if (apps.length) {
+      $("#untrackedSub").textContent = "Entra 有這些註冊,但本系統未有追蹤。 · In Entra but not tracked here" +
+        (d.total ? " — " + apps.length + " of " + d.total + " visible registrations." : ".");
+    }
+
+    $("#untrackedRows").innerHTML = apps.map(function (a) {
+      var rot = a.owned === true ? '<span class="st on">可以 Yes</span>'
+              : a.owned === false ? '<span class="st off" title="Add this tool as an Owner in Entra">否 No</span>'
+              : '<span class="st unknown">未知 Unknown</span>';
+      return "<tr>" +
+        "<td><b>" + esc(a.name) + "</b></td>" +
+        '<td class="mono">' + esc(a.clientId || a.entraObjectId) + "</td>" +
+        '<td class="nowrap">' + esc(AR.fmtDate(a.endsAt)) + "</td>" +
+        '<td class="nowrap">' + esc(AR.fmtDays(a.daysLeft)) + "</td>" +
+        "<td>" + AR.statusPill(a.status) + "</td>" +
+        "<td>" + rot + "</td></tr>";
     }).join("");
   }
 

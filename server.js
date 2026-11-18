@@ -263,6 +263,13 @@ app.get("/api/apps/:id", requireUser, wrap(async (req, res) => {
   } catch (e) { fail(res, e); }
 }));
 
+// Registrations that exist in Entra but are not tracked here. Needs the
+// read-only Application.Read.All to be useful tenant-wide; without it this is
+// just the owned-but-not-yet-added set.
+app.get("/api/unmanaged", requireUser, wrap(async (_req, res) => {
+  try { res.json(await inventory.unmanaged()); } catch (e) { fail(res, e); }
+}));
+
 app.get("/api/runs", requireUser, wrap(async (req, res) => {
   const appId = req.query.app ? idOf(req.query.app) : null;
   res.json({ runs: await regdb.listRuns({ appId, limit: req.query.limit }) });
@@ -324,12 +331,18 @@ app.get("/api/config/status", requireUser, (req, res) => res.json({ allowed: req
 // Every registration this app is an Owner of — the pick list when adding one.
 app.get("/api/config/discover", requireConfig, wrap(async (_req, res) => {
   try {
-    const owned = await graphapp.listOwned();
+    const inv = await graphapp.inventory();
     const known = await regdb.listApps();
     const byOid = {};
     known.forEach((k) => { byOid[k.entra_object_id] = k.id; });
     res.json({
-      apps: owned.map((a) => Object.assign({}, a, { managedId: byOid[a.objectId] || null })),
+      // Everything visible, each marked with whether it can actually be rotated.
+      // A registration this app does not own can be tracked for expiry, but a
+      // rotation would be refused by Graph, so the page greys it out.
+      apps: inv.apps.map((a) => Object.assign({}, a, { managedId: byOid[a.objectId] || null })),
+      tenantWide: inv.tenantWide,
+      owned: inv.owned,
+      total: inv.total,
       self: await graphapp.self().catch(() => null),
     });
   } catch (e) { fail(res, e); }

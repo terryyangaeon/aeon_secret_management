@@ -47,9 +47,14 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
           removePassword  └──────────────────────────┘
 ```
 
-Everything the tool can touch is opt-in twice over: Graph only exposes registrations where this
-tool's service principal is an **Owner**, and a registration is only rotated once an admin has
-added it here *and* given it a delivery target.
+Everything the tool can **change** is opt-in twice over: it may only write to registrations where
+its service principal is an **Owner**, and a registration is only rotated once an admin has added
+it here *and* given it a delivery target.
+
+What it can **see** is deliberately wider. With the read-only `Application.Read.All` permission the
+dashboard lists every registration in the tenant, including ones nobody opted in, so none can
+expire unnoticed — each is marked *可更新 Rotatable: 否 No* until it is opted in with
+`scripts/add-owner.ps1`. Seeing is not touching.
 
 ## Tables
 
@@ -154,6 +159,10 @@ At <https://entra.microsoft.com> → App registrations → **New registration**:
    - `User.Read.All` — the directory check when an admin adds an SSO account
    - `Application.ReadWrite.OwnedBy` — read and rotate secrets on owned registrations
    - `Mail.Send` — the alert emails
+   - `Application.Read.All` — **read-only, recommended.** Without it the app sees only
+     registrations it owns, so one nobody opted in expires silently. With it the dashboard
+     lists **every** registration in the tenant under *未納入管理 Not tracked*, while writes
+     stay limited to the owned set. Adding visibility does not add power.
 
    then **Grant admin consent for AEON Delight Asia**. All three must show green "Granted".
    Scope `Mail.Send` to one sender mailbox with an Exchange application access policy.

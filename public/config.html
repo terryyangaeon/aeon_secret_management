@@ -289,14 +289,23 @@
       discovered = d.apps || [];
       if (d.self) $("#selfSp").innerHTML = " 本系統的服務主體 · This tool's service principal: <b>" + esc(d.self.name) + "</b>";
       var free = discovered.filter(function (x) { return !x.managedId; });
+      // A registration this tool does not own can still be tracked for expiry,
+      // but Graph would refuse a rotation on it — so label it rather than hide it.
       $("#amPick").innerHTML = '<option value="">— 請選擇 choose —</option>' + free.map(function (x) {
-        return '<option value="' + esc(x.objectId) + '">' + esc(x.name) + " — " + esc(x.clientId) + "</option>";
+        var tag = x.owned === false ? "  [唯讀 read-only · 未擁有 not owned]" : "";
+        return '<option value="' + esc(x.objectId) + '">' + esc(x.name) + " — " + esc(x.clientId) + esc(tag) + "</option>";
       }).join("");
       if (!free.length) {
         $("#amPickHint").textContent = discovered.length
-          ? "所有擁有的註冊都已加入。 · Every registration this tool owns is already added."
-          : "本系統未被列為任何應用程式註冊的擁有者。請在 Entra 的 Owners 中加入本系統。 · " +
-            "This tool is not an Owner of any app registration yet — add it under Owners in Entra.";
+          ? "所有可見的註冊都已加入。 · Every registration this tool can see is already added."
+          : "本系統未被列為任何應用程式註冊的擁有者。請執行 scripts\add-owner.ps1。 · " +
+            "This tool is not an Owner of any app registration yet — run scripts\add-owner.ps1.";
+      } else if (!d.tenantWide) {
+        $("#amPickHint").textContent = "只列出本系統擁有的註冊。加入唯讀的 Application.Read.All 權限後,這裡會顯示租戶內所有註冊。 · " +
+          "Only registrations this tool owns are listed. Grant the read-only Application.Read.All permission to see every registration in the tenant.";
+      } else {
+        $("#amPickHint").textContent = "標示「未擁有」的註冊可以追蹤到期日,但不能自動更新 — 需先用 scripts\add-owner.ps1 加為擁有者。 · " +
+          "Registrations marked “not owned” can be tracked for expiry but not rotated — run scripts\add-owner.ps1 to opt them in.";
       }
     }).catch(function (e) {
       $("#amPick").innerHTML = '<option value="">—</option>';

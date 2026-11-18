@@ -1,6 +1,11 @@
 // Pure-logic tests — no database. Network calls are stubbed at global fetch.
 //   node tests/unit.test.js
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://unused";
+// lib/graph.js reads these at require time; without them it refuses before any
+// stub is reached. Fake values — every Graph call in this file is stubbed.
+process.env.SSO_TENANT_ID = process.env.SSO_TENANT_ID || "test-tenant";
+process.env.SSO_CLIENT_ID = process.env.SSO_CLIENT_ID || "test-client";
+process.env.SSO_CLIENT_SECRET = process.env.SSO_CLIENT_SECRET || "test-secret";
 process.env.COOLIFY_URL = "https://coolify-kvm.aeondelightasia.online";   // so coolify.getConfig()
 process.env.COOLIFY_API_TOKEN = "test-token";                           // never touches the DB
 const assert = require("assert");
@@ -264,6 +269,74 @@ await t("applications are listed with their first domain", async () => {
     const apps = await coolify.listApplications();
     assert.deepStrictEqual(apps.map((a) => a.name), ["Alpha", "Zed"], "sorted by name");
     assert.strictEqual(apps[1].fqdn, "https://z.example", "only the first domain");
+  });
+});
+
+// ---- Graph: tenant-wide visibility vs what may be rotated ----
+const graphapp = require("../lib/graphapp");
+
+function graphStub(routes) {
+  const sent = [];
+  const fn = async (url, opts) => {
+    const o = opts || {};
+    const method = o.method || "GET";
+    const path = String(url).replace(/^https?:\/\/[^/]+\/v1\.0/, "");
+    sent.push({ method, path });
+    if (/oauth2\/v2\.0\/token/.test(String(url))) return jsonRes({ access_token: "t", expires_in: 3600 });
+    for (const [re, respond] of routes) if (re.test(path)) return respond();
+    return jsonRes({ error: { message: "no stub for " + path } }, 404);
+  };
+  fn.sent = sent;
+  return fn;
+}
+const appRow = (id, name) => ({ id, appId: "client-" + id, displayName: name, passwordCredentials: [], keyCredentials: [] });
+const SP = [[/^\/servicePrincipals\?/, () => jsonRes({ value: [{ id: "sp-1", appId: "me", displayName: "Secret Management" }] })]];
+
+g("graph — what can be seen vs what can be rotated");
+await t("owned registrations are flagged, others are visible but not", async () => {
+  const f = graphStub(SP.concat([
+    [/^\/applications\?/, () => jsonRes({ value: [appRow("a1", "Owned App"), appRow("a2", "Someone Else's App")] })],
+    [/ownedObjects/, () => jsonRes({ value: [{ id: "a1" }] })],
+  ]));
+  await withFetch(f, async () => {
+    const inv = await graphapp.inventory(true);
+    assert.strictEqual(inv.total, 2);
+    assert.strictEqual(inv.owned, 1);
+    assert.strictEqual(inv.tenantWide, true, "seeing an unowned app means Read.All is in effect");
+    assert.strictEqual(inv.apps.find((a) => a.objectId === "a1").owned, true);
+    assert.strictEqual(inv.apps.find((a) => a.objectId === "a2").owned, false);
+  });
+});
+await t("listOwned excludes what cannot be rotated", async () => {
+  const f = graphStub(SP.concat([
+    [/^\/applications\?/, () => jsonRes({ value: [appRow("a1", "Owned App"), appRow("a2", "Someone Else's App")] })],
+    [/ownedObjects/, () => jsonRes({ value: [{ id: "a1" }] })],
+  ]));
+  await withFetch(f, async () => {
+    const owned = await graphapp.listOwned(true);
+    assert.deepStrictEqual(owned.map((a) => a.objectId), ["a1"], "a2 must never reach anything that writes");
+  });
+});
+await t("without Read.All everything visible is owned, and tenantWide is false", async () => {
+  const f = graphStub(SP.concat([
+    [/^\/applications\?/, () => jsonRes({ value: [appRow("a1", "Owned App")] })],
+    [/ownedObjects/, () => jsonRes({ value: [{ id: "a1" }] })],
+  ]));
+  await withFetch(f, async () => {
+    const inv = await graphapp.inventory(true);
+    assert.strictEqual(inv.tenantWide, false);
+    assert.strictEqual(inv.owned, 1);
+  });
+});
+await t("if ownership cannot be read, nothing is wrongly claimed as owned", async () => {
+  const f = graphStub(SP.concat([
+    [/^\/applications\?/, () => jsonRes({ value: [appRow("a1", "App")] })],
+    [/ownedObjects/, () => jsonRes({ error: { message: "Insufficient privileges" } }, 403)],
+  ]));
+  await withFetch(f, async () => {
+    const inv = await graphapp.inventory(true);
+    assert.strictEqual(inv.apps[0].owned, null, "unknown, not true");
+    assert.strictEqual(inv.tenantWide, false, "cannot claim tenant-wide without knowing ownership");
   });
 });
 
