@@ -218,7 +218,9 @@ enabled under Settings → Advanced.
    Keep one **Email-type** admin as break-glass, in case Microsoft sign-in breaks.
 2. Configuration → **Coolify connection** → server URL + token → **Test connection**.
    Check it reports *Can read values: yes*.
-3. Configuration → **Alerts** → sender mailbox, recipients → **Send test email**.
+3. Configuration → **Alerts** → sender mailbox, recipients → **Send test email** (a sample, no real
+   data). **Send alerts now** beside it runs the real sweep and emails the recipients immediately;
+   thresholds already notified are skipped, and the page offers to re-send them.
 4. Configuration → **Applications** → Add application. Only owned registrations are listed.
    Leave **auto-rotate off** for now.
 5. Configuration → **Delivery targets** → pick the app → pick the Coolify application → pick or type
