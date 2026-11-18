@@ -130,9 +130,17 @@
     }).then(function (d) {
       runs = d.runs || [];
       renderRuns();
-      return api("GET", "/api/unmanaged");
-    }).then(function (d) {
-      renderUntracked(d);
+      // Degrade quietly: a dashboard is not the place to interrupt someone
+      // because an optional tenant-wide read is unavailable.
+      return api("GET", "/api/unmanaged").then(renderUntracked, function (e) {
+        if (e && e.h) throw e;
+        $("#untrackedBlock").hidden = true;
+        $("#cUntracked").textContent = "—";
+        var b = $("#bReadAll");
+        b.hidden = false;
+        b.textContent = "未能讀取租戶的應用程式註冊清單: " + ((e && e.message) || "unknown") +
+          " · Could not read the tenant's app registrations.";
+      });
     }).catch(AR.handleErr);
   }
 
