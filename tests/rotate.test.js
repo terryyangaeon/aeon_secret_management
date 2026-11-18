@@ -286,6 +286,34 @@ async function addTarget(appId, varName, order) {
     assert.strictEqual(await regdb.claimAlert(a.id, "k1", 30), true, "cleared after the secret is replaced");
   });
 
+  g("Send alerts now — the manual sweep");
+  await t("a second run sends nothing, and reports what it held back", async () => {
+    resetFake();
+    const a = await freshApp();                       // credential expires in 10 days
+    const inventory = require("../lib/inventory");
+
+    const first = await inventory.sendExpiryAlerts();
+    assert.strictEqual(first.sent, 1, "crosses the 30-day threshold");
+    assert.strictEqual(first.suppressed, 0);
+
+    const second = await inventory.sendExpiryAlerts();
+    assert.strictEqual(second.sent, 0, "same threshold must not fire twice");
+    assert.strictEqual(second.suppressed, 1, "and it must say so, not just report zero");
+  });
+
+  await t("force re-sends, and still records the claim", async () => {
+    const inventory = require("../lib/inventory");
+    const before = fake.mails.length;
+
+    const forced = await inventory.sendExpiryAlerts({ force: true });
+    assert.strictEqual(forced.sent, 1);
+    assert.strictEqual(fake.mails.length, before + 1, "the recipient really gets another mail");
+
+    const after = await inventory.sendExpiryAlerts();
+    assert.strictEqual(after.sent, 0, "normal deduping resumes after a forced send");
+    assert.strictEqual(after.suppressed, 1);
+  });
+
   g("untracked registrations — alerts for things nobody opted in");
   await t("one digest covers them all, and only once per threshold", async () => {
     resetFake();

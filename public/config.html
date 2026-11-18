@@ -110,9 +110,14 @@
             <input type="text" id="aThresholds" placeholder="60, 30, 14, 7, 1">
             <label class="chk"><input type="checkbox" id="aOnRotation" checked> 每次更新後寄出報告 · Email a report after every rotation</label>
             <p class="hint">每個密碼在每個門檻只會寄一次。更換密碼後會重新計算。
-              · Each secret triggers each threshold once. Replacing the secret resets the counters.</p>
+              · Each secret triggers each threshold once. Replacing the secret resets the counters.<br>
+              <b>立即寄出提醒</b> 會真的跑一次提醒流程,寄出真實內容給收件人;已經寄過的門檻會被略過。
+              <b>寄測試郵件</b> 只寄一封樣本,不含真實資料。
+              · <b>Send alerts now</b> runs the real sweep and emails the recipients; thresholds already
+              notified are skipped. <b>Send test email</b> just sends a sample.</p>
             <div class="modal-acts">
               <button class="btn primary" id="aSave">儲存 Save</button>
+              <button class="btn ghost" id="aRun">立即寄出提醒 Send alerts now</button>
               <button class="btn ghost" id="aTest">寄測試郵件 Send test email</button>
             </div>
           </div>
@@ -549,6 +554,48 @@
     }).then(function () { AR.toast("已儲存 · Saved"); return loadAlerts(); })
       .catch(AR.handleErr).then(function () { $("#aSave").disabled = false; });
   });
+  // Runs the real sweep. Deduping means this can legitimately send nothing, so
+  // say which it was rather than leaving the user wondering whether it worked.
+  function alertSummary(r) {
+    var t = r.tracked || {}, u = r.untracked || {};
+    var lines = [];
+    lines.push("已納入管理 Tracked: 寄出 " + (t.sent || 0) + " 封" +
+      (t.suppressed ? ",略過 " + t.suppressed + " 個(之前已寄過)" : ""));
+    if (u.skipped) lines.push("未納入管理 Untracked: 未寄出 — " + u.skipped);
+    else lines.push("未納入管理 Untracked: " + (u.sent ? "寄出 1 封摘要,涵蓋 " + (u.registrations || 0) + " 個註冊" : "沒有新的") +
+      (u.suppressed ? ",略過 " + u.suppressed + " 個(之前已寄過)" : ""));
+    if (t.error) lines.push("錯誤 Error: " + t.error);
+    if (u.error) lines.push("錯誤 Error: " + u.error);
+    return lines.join("\n");
+  }
+
+  function runAlerts(force) {
+    $("#aRun").disabled = true;
+    $("#aRun").textContent = "寄出中… Sending…";
+    return api("POST", "/api/config/alerts/run", { force: !!force }).then(function (r) {
+      var t = r.tracked || {}, u = r.untracked || {};
+      var sent = (t.sent || 0) + (u.sent || 0);
+      var held = (t.suppressed || 0) + (u.suppressed || 0);
+      if (!sent && held && !force) {
+        if (confirm("沒有寄出任何提醒,因為這 " + held + " 個項目的門檻之前已經寄過。\n\n" +
+                    "Nothing was sent: those " + held + " thresholds were already notified.\n\n" +
+                    "要強制重寄嗎? · Re-send them anyway?")) return runAlerts(true);
+        return AR.msg("沒有寄出 · Nothing sent", alertSummary(r));
+      }
+      if (!sent) return AR.msg("沒有需要提醒的項目 · Nothing due", alertSummary(r));
+      AR.msg(force ? "已強制重寄 · Re-sent" : "已寄出 · Sent", alertSummary(r));
+    }).catch(AR.handleErr).then(function () {
+      $("#aRun").disabled = false;
+      $("#aRun").textContent = "立即寄出提醒 Send alerts now";
+    });
+  }
+
+  $("#aRun").addEventListener("click", function () {
+    if (!confirm("這會立即執行真正的提醒流程,並把真實內容寄給收件人。\n\n" +
+                 "This runs the real alert sweep and emails the recipients now.\n\n繼續? · Continue?")) return;
+    runAlerts(false);
+  });
+
   $("#aTest").addEventListener("click", function () {
     $("#aTest").disabled = true;
     api("POST", "/api/config/alerts/test")

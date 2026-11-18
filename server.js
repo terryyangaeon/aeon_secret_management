@@ -456,6 +456,22 @@ app.get("/api/config/alerts", requireConfig, wrap(async (_req, res) => {
 app.put("/api/config/alerts", requireConfig, wrap(async (req, res) => {
   try { res.json({ alerts: await mailer.setConfig(req.body || {}) }); } catch (e) { fail(res, e); }
 }));
+// Run the real alert sweep now, rather than waiting for the scheduler.
+// body { force: true } re-sends thresholds that were already notified — the
+// claim is still recorded, so normal deduping resumes afterwards.
+app.post("/api/config/alerts/run", requireConfig, wrap(async (req, res) => {
+  try {
+    const force = !!(req.body || {}).force;
+    await inventory.refresh().catch((e) => console.warn("refresh before alerts:", e.message));
+    const tracked = await inventory.sendExpiryAlerts({ force });
+    const untracked = await inventory.sendUntrackedAlerts({ force });
+    await regdb.audit(req.user.email, force ? "alerts.run.force" : "alerts.run", "", {
+      tracked: tracked.sent, untracked: untracked.sent,
+    });
+    res.json({ force, tracked, untracked });
+  } catch (e) { fail(res, e); }
+}));
+
 app.post("/api/config/alerts/test", requireConfig, wrap(async (req, res) => {
   try {
     const sent = await mailer.send("Test — Secret Management",
