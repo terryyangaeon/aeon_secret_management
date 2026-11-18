@@ -31,6 +31,8 @@ async function t(name, fn) {
 }
 function g(n) { console.log("\n" + n); }
 
+const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString();
+
 // ---- Stubs ------------------------------------------------------------------
 
 // A fake Entra app registration plus a fake Coolify application.
@@ -282,6 +284,72 @@ async function addTarget(appId, varName, order) {
     assert.strictEqual(await regdb.claimAlert(a.id, "k1", 7), true, "a different threshold is separate");
     await regdb.clearAlerts(a.id, "k1");
     assert.strictEqual(await regdb.claimAlert(a.id, "k1", 30), true, "cleared after the secret is replaced");
+  });
+
+  g("untracked registrations — alerts for things nobody opted in");
+  await t("one digest covers them all, and only once per threshold", async () => {
+    resetFake();
+    const a = await freshApp();                     // tracked; must NOT appear
+    const inventory = require("../lib/inventory");
+    const graphapp2 = require("../lib/graphapp");
+    const realInv = graphapp2.inventory;
+    graphapp2.inventory = async () => ({
+      total: 3, owned: 1, tenantWide: true,
+      apps: [
+        { objectId: "obj-1", clientId: "client-1", name: "Fake App", owned: true,
+          credentials: [{ keyId: "key-old", kind: "secret", endsAt: inDays(10) }] },
+        { objectId: "obj-x", clientId: "client-x", name: "Nobody Opted In", owned: false,
+          credentials: [{ keyId: "kx", kind: "secret", endsAt: inDays(5) }] },
+        { objectId: "obj-y", clientId: "client-y", name: "Long Expired", owned: false,
+          credentials: [{ keyId: "ky", kind: "secret", endsAt: inDays(-77) }] },
+      ],
+    });
+    try {
+      const r1 = await inventory.sendUntrackedAlerts();
+      assert.strictEqual(r1.sent, 1, "one digest, not one mail each");
+      assert.strictEqual(r1.registrations, 2, "the tracked app must not be in it");
+
+      const mail = fake.mails[fake.mails.length - 1];
+      assert.ok(/EXPIRED/.test(mail.subject), mail.subject);
+      assert.ok(mail.html.includes("Nobody Opted In") && mail.html.includes("Long Expired"));
+      assert.ok(!mail.html.includes("Fake App"), "a tracked registration must not be reported as untracked");
+
+      const before = fake.mails.length;
+      const r2 = await inventory.sendUntrackedAlerts();
+      assert.strictEqual(r2.sent, 0, "same threshold must not fire twice");
+      assert.strictEqual(fake.mails.length, before);
+    } finally { graphapp2.inventory = realInv; }
+  });
+
+  await t("a failed send releases the claims so it retries", async () => {
+    const inventory = require("../lib/inventory");
+    const graphapp2 = require("../lib/graphapp");
+    const realInv = graphapp2.inventory, realSend = mailer.send;
+    graphapp2.inventory = async () => ({
+      total: 1, owned: 0, tenantWide: true,
+      apps: [{ objectId: "obj-z", clientId: "client-z", name: "Retry Me", owned: false,
+               credentials: [{ keyId: "kz", kind: "secret", endsAt: inDays(3) }] }],
+    });
+    mailer.send = async () => { throw new Error("mailbox unavailable"); };
+    try {
+      const bad = await inventory.sendUntrackedAlerts();
+      assert.strictEqual(bad.sent, 0);
+      mailer.send = realSend;
+      const good = await inventory.sendUntrackedAlerts();
+      assert.strictEqual(good.sent, 1, "the claim was released, so it tries again");
+    } finally { graphapp2.inventory = realInv; mailer.send = realSend; }
+  });
+
+  await t("without tenant-wide visibility it stays quiet", async () => {
+    const inventory = require("../lib/inventory");
+    const graphapp2 = require("../lib/graphapp");
+    const realInv = graphapp2.inventory;
+    graphapp2.inventory = async () => ({ total: 1, owned: 1, tenantWide: false, apps: [] });
+    try {
+      const r = await inventory.sendUntrackedAlerts();
+      assert.strictEqual(r.sent, 0);
+      assert.ok(/Application.Read.All/.test(r.skipped || ""), r.skipped);
+    } finally { graphapp2.inventory = realInv; }
   });
 
   // ---- Clean up ----

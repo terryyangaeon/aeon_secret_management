@@ -14,6 +14,10 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
 - **Inventory** — every app registration this tool is an *Owner* of, with all its client secrets and
   certificates, their expiry dates and days remaining (green / amber / red).
 - **Warnings** — email at 60 / 30 / 14 / 7 / 1 days before expiry, once per secret per threshold.
+  With `Application.Read.All` this covers **registrations nobody opted in too**, as a single digest
+  marked "nothing will be rotated automatically" — because the ones that expire quietly are exactly
+  the ones nobody is watching. Two secrets in this tenant sat expired for 77 and 52 days before the
+  tenant-wide view found them.
 - **Rotation** — on a schedule or on demand:
 
   ```

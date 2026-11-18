@@ -472,6 +472,7 @@ app.post("/api/config/refresh", requireConfig, wrap(async (req, res) => {
   try {
     const r = await inventory.refresh();
     await inventory.sendExpiryAlerts().catch((e) => console.warn("expiry alerts:", e.message));
+    r.untracked = await inventory.sendUntrackedAlerts().catch((e) => ({ sent: 0, error: e.message }));
     res.json(r);
   } catch (e) { fail(res, e); }
 }));
