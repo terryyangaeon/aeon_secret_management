@@ -76,13 +76,10 @@
         <section id="view-coolify" hidden>
           <h1 class="sect">Coolify 連線 Connection</h1>
           <div class="panel">
-            <p class="hint" style="margin-top:0">在 Coolify → Keys &amp; Tokens → API Tokens 建立權杖,需要
-              <b>read:sensitive</b>(讀回舊值以便還原)、<b>write</b>(修改變數)及 <b>deploy</b>(重啟)權限。權杖會加密儲存。
-              · Create a token in Coolify under Keys &amp; Tokens → API Tokens. It needs <b>read:sensitive</b> (so the old
-              value can be read back and rolled back to), <b>write</b> and <b>deploy</b>. It is stored encrypted.</p>
-            <div class="fieldlbl">Coolify 網址 Server URL</div>
+            <div class="fieldlbl" style="margin-top:0">Coolify 網址 Server URL</div>
             <input type="text" id="cUrl" placeholder="https://coolify-kvm.aeondelightasia.online" autocomplete="off">
             <div class="fieldlbl">API token</div>
+            <div class="hint" style="margin:0 0 4px">How to get the token:<br>Coolify → Keys &amp; Tokens → API Tokens → Check read:sensitive、write、deploy permission.</div>
             <input type="text" id="cToken" placeholder="貼上新的權杖以取代現有的 · paste a new token to replace the saved one" autocomplete="off">
             <div class="hint" id="cState">…</div>
             <div class="modal-acts">
