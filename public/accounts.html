@@ -118,6 +118,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="/static/appreg.js"></script>
   <script src="/static/oneview-navbar.js"></script>
   <script src="/static/change-password.js"></script>
   <script>
@@ -223,8 +224,20 @@
         toast(needPw ? "Set a password of at least 6 characters for an Email account." : "New password must be at least 6 characters.");
         $("#umPass").focus(); return;
       }
-      if (type === "sso" && editingUser && editingUser.accountType === "email" &&
-          !confirm("Change " + editingEmail + " to SSO? Their current password will be removed and they will sign in with their company account.")) return;
+      if (type === "sso" && editingUser && editingUser.accountType === "email") {
+        AR.confirm("改為 SSO · Change to SSO",
+          "把 " + editingEmail + " 改為 SSO?\n\n現有密碼會被移除,之後需要用公司帳戶登入。\n\n" +
+          "Their current password will be removed and they will sign in with their company account.",
+          { okText: "改為 SSO · Change" }).then(function (ok) { if (ok) saveAccount(); });
+        return;
+      }
+      saveAccount();
+    });
+
+    function saveAccount() {
+      var email = $("#umEmail").value.trim().toLowerCase();
+      var pass = $("#umPass").value;
+      var type = $("#umType").value;
       var payload = {
         name: $("#umName").value.trim(), role: $("#umRole").value, active: $("#umActive").checked,
         bus: Array.prototype.map.call($("#umSites").querySelectorAll("input:checked"), function (i) { return i.value; })
@@ -246,11 +259,16 @@
           } else handleErr(e);
         })
         .then(function () { saveBtn.disabled = false; saveBtn.textContent = "Save"; });
-    });
+    }
     $("#umDelete").addEventListener("click", function () {
       if (!editingEmail) return;
-      if (!confirm('Delete account "' + editingEmail + '"?')) return;
-      api("DELETE", "/api/accounts/" + encodeURIComponent(editingEmail)).then(function () { closeUserModal(); load(); toast("Deleted."); }).catch(handleErr);
+      AR.confirm("刪除帳戶 Delete account",
+        '刪除帳戶 "' + editingEmail + '"?\n\nDelete this account?',
+        { okText: "刪除 Delete", danger: true }).then(function (ok) {
+          if (!ok) return;
+          api("DELETE", "/api/accounts/" + encodeURIComponent(editingEmail))
+            .then(function () { closeUserModal(); load(); toast("Deleted."); }).catch(handleErr);
+        });
     });
 
     function load() {

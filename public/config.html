@@ -360,11 +360,16 @@
   });
   $("#amDelete").addEventListener("click", function () {
     if (!editingApp) return;
-    if (!confirm("從本系統移除 " + editingApp.name + "?\n\nRemove " + editingApp.name + " from this tool?\n\n" +
-      "The Entra app registration and its secrets are NOT touched — only this tool stops tracking it.")) return;
-    api("DELETE", "/api/config/apps/" + editingApp.id)
-      .then(function () { $("#appModal").hidden = true; AR.toast("已移除 · Removed"); return loadApps(); })
-      .catch(AR.handleErr);
+    AR.confirm("移除應用程式 Remove application",
+      "從本系統移除 " + editingApp.name + "?\n\n" +
+      "Entra 的應用程式註冊及其密碼不會被改動 — 只是本系統不再追蹤它。\n\n" +
+      "The Entra app registration and its secrets are NOT touched — only this tool stops tracking it.",
+      { okText: "移除 Remove", danger: true }).then(function (ok) {
+        if (!ok) return;
+        return api("DELETE", "/api/config/apps/" + editingApp.id)
+          .then(function () { $("#appModal").hidden = true; AR.toast("已移除 · Removed"); return loadApps(); })
+          .catch(AR.handleErr);
+      });
   });
   $("#addAppBtn").addEventListener("click", function () { openApp(null); });
 
@@ -476,10 +481,14 @@
   });
   $("#tmDelete").addEventListener("click", function () {
     if (!editingTgt) return;
-    if (!confirm("刪除這個傳送位置?\n\nDelete this delivery target?")) return;
-    api("DELETE", "/api/config/targets/" + editingTgt.id)
-      .then(function () { $("#tgtModal").hidden = true; AR.toast("已刪除 · Deleted"); return loadTargets().then(loadApps); })
-      .catch(AR.handleErr);
+    AR.confirm("刪除傳送位置 Delete delivery target",
+      "刪除這個傳送位置?\n\nDelete this delivery target?",
+      { okText: "刪除 Delete", danger: true }).then(function (ok) {
+        if (!ok) return;
+        return api("DELETE", "/api/config/targets/" + editingTgt.id)
+          .then(function () { $("#tgtModal").hidden = true; AR.toast("已刪除 · Deleted"); return loadTargets().then(loadApps); })
+          .catch(AR.handleErr);
+      });
   });
   $("#tmTest").addEventListener("click", function () {
     if (!editingTgt) return;
@@ -577,10 +586,14 @@
       var sent = (t.sent || 0) + (u.sent || 0);
       var held = (t.suppressed || 0) + (u.suppressed || 0);
       if (!sent && held && !force) {
-        if (confirm("沒有寄出任何提醒,因為這 " + held + " 個項目的門檻之前已經寄過。\n\n" +
-                    "Nothing was sent: those " + held + " thresholds were already notified.\n\n" +
-                    "要強制重寄嗎? · Re-send them anyway?")) return runAlerts(true);
-        return AR.msg("沒有寄出 · Nothing sent", alertSummary(r));
+        return AR.confirm("沒有寄出 · Nothing sent",
+          "沒有寄出任何提醒,因為這 " + held + " 個項目的門檻之前已經寄過。\n\n" +
+          "Nothing was sent: those " + held + " thresholds were already notified.\n\n" +
+          "要強制重寄嗎? · Re-send them anyway?",
+          { okText: "強制重寄 Re-send" }).then(function (yes) {
+            if (yes) return runAlerts(true);
+            return AR.msg("沒有寄出 · Nothing sent", alertSummary(r));
+          });
       }
       if (!sent) return AR.msg("沒有需要提醒的項目 · Nothing due", alertSummary(r));
       AR.msg(force ? "已強制重寄 · Re-sent" : "已寄出 · Sent", alertSummary(r));
@@ -591,9 +604,10 @@
   }
 
   $("#aRun").addEventListener("click", function () {
-    if (!confirm("這會立即執行真正的提醒流程,並把真實內容寄給收件人。\n\n" +
-                 "This runs the real alert sweep and emails the recipients now.\n\n繼續? · Continue?")) return;
-    runAlerts(false);
+    AR.confirm("立即寄出提醒 Send alerts now",
+      "這會立即執行真正的提醒流程,並把真實內容寄給收件人。\n\n" +
+      "This runs the real alert sweep and emails the recipients now.",
+      { okText: "寄出 Send" }).then(function (ok) { if (ok) runAlerts(false); });
   });
 
   $("#aTest").addEventListener("click", function () {

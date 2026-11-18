@@ -269,14 +269,19 @@
     if (!b) return;
     var a = apps.filter(function (x) { return String(x.id) === b.getAttribute("data-id"); })[0];
     if (!a) return;
-    if (!confirm("立即為 " + a.name + " 更新用戶端密碼?\n\nRotate the client secret for " + a.name + " now?\n\n" +
-      "A new secret is created, written to " + a.targetCount + " target(s), the service is restarted and health-checked. " +
-      "The old secret is deleted only if that all succeeds.")) return;
-    b.disabled = true;
-    api("POST", "/api/apps/" + a.id + "/rotate").then(function () {
-      AR.toast("更新已開始 · Rotation started — this page will update as it runs.");
-      setTimeout(load, 3000);
-    }).catch(function (e) { b.disabled = false; AR.handleErr(e); });
+    AR.confirm("立即更新 Rotate now",
+      "為 " + a.name + " 更新用戶端密碼?\n\n" +
+      "系統會建立新密碼,寫入 " + a.targetCount + " 個傳送位置,重啟服務並做健康檢查。全部成功後才會刪除舊密碼。\n\n" +
+      "A new secret is created, written to " + a.targetCount + " target(s), the service is restarted and " +
+      "health-checked. The old secret is deleted only if that all succeeds.",
+      { okText: "立即更新 Rotate" }).then(function (ok) {
+        if (!ok) return;
+        b.disabled = true;
+        return api("POST", "/api/apps/" + a.id + "/rotate").then(function () {
+          AR.toast("更新已開始 · Rotation started — this page will update as it runs.");
+          setTimeout(load, 3000);
+        }).catch(function (e) { b.disabled = false; AR.handleErr(e); });
+      });
   });
 
   $("#refreshBtn").addEventListener("click", function () {

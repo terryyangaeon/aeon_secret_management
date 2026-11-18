@@ -76,6 +76,46 @@
     msgEl.hidden = false;
   }
 
+  // ---- Confirm (in-page, not the browser's own dialog) ----
+  // Returns a Promise<boolean>. Same rule as the form dialogs: it closes only
+  // via its buttons — no backdrop click, no Esc — so a stray click can't be
+  // read as an answer either way.
+  var confirmEl = null;
+  function confirmBox(title, text, opts) {
+    var o = opts || {};
+    if (!confirmEl) {
+      confirmEl = document.createElement("div");
+      confirmEl.className = "modal-overlay";
+      confirmEl.hidden = true;
+      confirmEl.innerHTML = '<div class="modal-box" style="max-width:480px">' +
+        '<div class="modal-title" data-t></div>' +
+        '<div data-b style="white-space:pre-wrap;line-height:1.6"></div>' +
+        '<div class="modal-acts"><span style="flex:1"></span>' +
+        '<button class="btn ghost" data-no></button>' +
+        '<button class="btn primary" data-yes></button></div></div>';
+      document.body.appendChild(confirmEl);
+    }
+    confirmEl.querySelector("[data-t]").textContent = title;
+    confirmEl.querySelector("[data-b]").textContent = text;
+    var yes = confirmEl.querySelector("[data-yes]");
+    var no = confirmEl.querySelector("[data-no]");
+    yes.textContent = o.okText || "確定 OK";
+    no.textContent = o.cancelText || "取消 Cancel";
+    yes.className = "btn " + (o.danger ? "danger" : "primary");
+    confirmEl.hidden = false;
+    yes.focus();
+
+    return new Promise(function (resolve) {
+      function done(v) {
+        yes.onclick = null; no.onclick = null;
+        confirmEl.hidden = true;
+        resolve(v);
+      }
+      yes.onclick = function () { done(true); };
+      no.onclick = function () { done(false); };
+    });
+  }
+
   function handleErr(e) {
     if (e && e.h) return;
     msg("出錯了 · Something went wrong", (e && e.message) || "Request failed.");
@@ -114,7 +154,7 @@
   }
 
   window.AR = {
-    $: $, $$: $$, esc: esc, api: api, toast: toast, msg: msg, handleErr: handleErr,
+    $: $, $$: $$, esc: esc, api: api, toast: toast, msg: msg, confirm: confirmBox, handleErr: handleErr,
     fmtDate: fmtDate, fmtDateTime: fmtDateTime, fmtDays: fmtDays,
     statusPill: statusPill, runPill: runPill, stepsHtml: stepsHtml
   };

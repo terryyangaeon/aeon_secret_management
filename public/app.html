@@ -199,15 +199,24 @@
         $("#revModal").hidden = false;
       }).catch(AR.handleErr);
     } else if (k.classList.contains("c-cur")) {
-      if (!confirm("把這個密碼設為「使用中」?\n\nMark this secret as the one the live app uses?\n\n" +
-        "The next rotation will replace this one and delete it.")) return;
-      api("POST", "/api/apps/" + id + "/credentials/" + encodeURIComponent(keyId) + "/current")
-        .then(function () { AR.toast("已更新 · Updated"); return load(); }).catch(AR.handleErr);
+      AR.confirm("設為使用中 Set in use",
+        "把這個密碼設為「使用中」?\n\n下次更新會取代並刪除這一條。\n\n" +
+        "Mark this secret as the one the live app uses? The next rotation will replace this one and delete it.",
+        { okText: "設為使用中 Set in use" }).then(function (ok) {
+          if (!ok) return;
+          return api("POST", "/api/apps/" + id + "/credentials/" + encodeURIComponent(keyId) + "/current")
+            .then(function () { AR.toast("已更新 · Updated"); return load(); }).catch(AR.handleErr);
+        });
     } else if (k.classList.contains("c-del")) {
-      if (!confirm("從 Entra 永久刪除這個密碼?\n\nPermanently delete this secret from the Entra app registration?\n\n" +
-        "Anything still using it will stop working immediately. This cannot be undone.")) return;
-      api("DELETE", "/api/apps/" + id + "/credentials/" + encodeURIComponent(keyId))
-        .then(function () { AR.toast("已刪除 · Deleted"); return load(); }).catch(AR.handleErr);
+      AR.confirm("永久刪除密碼 Delete secret",
+        "從 Entra 永久刪除這個密碼?\n\n任何仍在使用它的東西會立即停止運作,而且無法復原。\n\n" +
+        "Permanently delete this secret from the Entra app registration? Anything still using it will stop " +
+        "working immediately. This cannot be undone.",
+        { okText: "永久刪除 Delete", danger: true }).then(function (ok) {
+          if (!ok) return;
+          return api("DELETE", "/api/apps/" + id + "/credentials/" + encodeURIComponent(keyId))
+            .then(function () { AR.toast("已刪除 · Deleted"); return load(); }).catch(AR.handleErr);
+        });
     }
   });
 
@@ -236,14 +245,19 @@
   $("#rmClose").addEventListener("click", function () { $("#runModal").hidden = true; });
 
   $("#rotateBtn").addEventListener("click", function () {
-    if (!confirm("立即為 " + app.name + " 更新用戶端密碼?\n\nRotate the client secret for " + app.name + " now?\n\n" +
-      "A new secret is created, written to " + app.targetCount + " target(s), the service is restarted and health-checked. " +
-      "The old secret is deleted only if that all succeeds.")) return;
-    $("#rotateBtn").disabled = true;
-    api("POST", "/api/apps/" + id + "/rotate").then(function () {
-      AR.toast("更新已開始 · Rotation started");
-      setTimeout(load, 3000);
-    }).catch(function (e) { $("#rotateBtn").disabled = false; AR.handleErr(e); });
+    AR.confirm("立即更新 Rotate now",
+      "為 " + app.name + " 更新用戶端密碼?\n\n" +
+      "系統會建立新密碼,寫入 " + app.targetCount + " 個傳送位置,重啟服務並做健康檢查。全部成功後才會刪除舊密碼。\n\n" +
+      "A new secret is created, written to " + app.targetCount + " target(s), the service is restarted and " +
+      "health-checked. The old secret is deleted only if that all succeeds.",
+      { okText: "立即更新 Rotate" }).then(function (ok) {
+        if (!ok) return;
+        $("#rotateBtn").disabled = true;
+        return api("POST", "/api/apps/" + id + "/rotate").then(function () {
+          AR.toast("更新已開始 · Rotation started");
+          setTimeout(load, 3000);
+        }).catch(function (e) { $("#rotateBtn").disabled = false; AR.handleErr(e); });
+      });
   });
 
   api("GET", "/api/auth/me").then(function (d) {
