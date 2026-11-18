@@ -353,6 +353,9 @@ app.get("/api/config/apps", requireConfig, wrap(async (_req, res) => res.json({ 
 app.post("/api/config/apps", requireConfig, wrap(async (req, res) => {
   try {
     const b = req.body || {};
+    // Reject 6 months or more before touching Entra. Clamping would store a
+    // different lifetime than the one the admin asked for.
+    regdb.assertLifetimeMonths(b.lifetimeMonths);
     // Read it from Entra first, so a typo'd object id fails here rather than at rotation time.
     const live = await graphapp.getApp(String(b.entraObjectId || "").trim());
     const row = await regdb.createApp(Object.assign({}, b, {
@@ -368,6 +371,7 @@ app.post("/api/config/apps", requireConfig, wrap(async (req, res) => {
 app.put("/api/config/apps/:id", requireConfig, wrap(async (req, res) => {
   try {
     const a = await mustApp(req);
+    regdb.assertLifetimeMonths((req.body || {}).lifetimeMonths);
     const row = await regdb.updateApp(a.id, req.body || {});
     await regdb.audit(req.user.email, "app.update", row.name, { appId: row.id });
     res.json({ app: await inventory.describe(row) });

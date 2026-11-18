@@ -97,5 +97,30 @@ t("the OneView contract routes are all present", () => {
   assert.strictEqual(missing.length, 0, "missing: " + missing.map((x) => x.join(" ")).join(", "));
 });
 
+const configHtml = fs.readFileSync(path.join(ROOT, "public/config.html"), "utf8");
+const regdbSrc = fs.readFileSync(path.join(ROOT, "lib/regdb.js"), "utf8");
+t("the edit-application label is the short new-secret validity wording", () => {
+  assert.ok(configHtml.includes("新密碼有效期 New Secret Validity (months &lt;6)"),
+    "label text missing");
+  assert.ok(!configHtml.includes("New secret lifetime"), "old lifetime label still present");
+  assert.ok(!configHtml.includes("the tenant caps this at 6"), "old cap hint still present");
+});
+t("Save checks new secret validity in the page before calling the API", () => {
+  const saveAt = configHtml.indexOf('$("#amSave").addEventListener');
+  const checkAt = configHtml.indexOf("validLifetimeMonths", saveAt);
+  const apiAt = configHtml.indexOf('api("PUT"', saveAt);
+  assert.ok(saveAt > 0 && checkAt > saveAt && apiAt > checkAt, "validity check must run before the save request");
+  const err = /var LIFETIME_ERR = "([^"]+)"/.exec(configHtml);
+  const serverErr = /const LIFETIME_MONTHS_ERROR =\s*\n\s*"([^"]+)" \+\s*\n\s*"([^"]+)"/.exec(regdbSrc);
+  assert.ok(err && serverErr, "could not find the shared error sentence");
+  assert.strictEqual(err[1], serverErr[1] + serverErr[2]);
+});
+t("creating and updating an application both reject an over-long lifetime", () => {
+  const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));
+  const put = server.slice(server.indexOf('app.put("/api/config/apps/:id"'), server.indexOf('app.delete("/api/config/apps/:id"'));
+  assert.ok(post.includes("regdb.assertLifetimeMonths(b.lifetimeMonths)"), "POST does not enforce the cap");
+  assert.ok(put.includes("regdb.assertLifetimeMonths((req.body || {}).lifetimeMonths)"), "PUT does not enforce the cap");
+});
+
 console.log("\n" + pass + " checks passed" + (process.exitCode ? " — WITH FAILURES" : "") +
   "  (" + routes.length + " routes, " + calls.length + " front-end calls)\n");

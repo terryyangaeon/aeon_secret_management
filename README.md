@@ -21,7 +21,7 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
 - **Rotation** — on a schedule or on demand:
 
   ```
-  1  Entra: addPassword            new secret, 6-month lifetime by default
+  1  Entra: addPassword            new secret, 1–5 months (default 5)
   2  store the value encrypted     Graph hands it over exactly once
   3  snapshot + write the Coolify environment variable(s)
   4  restart each affected application
@@ -33,8 +33,8 @@ Production: **https://secret.aeondelightasia.online** · Coolify project **Secre
   restored from the snapshots, the application is restarted again, and the *new* secret is deleted —
   the app carries on with the old one, and you get an email saying so.
 - **Per-app policy** — rotate *N days before expiry* (default 30), *monthly* on a chosen day, or
-  *manual only*. New-secret lifetime defaults to **6 months**, because the AEON tenant's
-  application management policy caps client secrets at 6 months; asking for longer is refused.
+  *manual only*. New-secret validity is **1–5 months** (default 5). The AEON tenant's
+  application management policy refuses a client secret of 6 months or longer.
 - **Several targets per app** — one registration's secret can live in more than one Coolify
   application (e.g. an app service plus a separate Supabase service).
 - Sign-in, Account Management and the navbar follow the usual OneView model.

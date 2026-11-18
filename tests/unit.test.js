@@ -13,6 +13,7 @@ const assert = require("assert");
 const inventory = require("../lib/inventory");
 const coolify = require("../lib/coolify");
 const mailer = require("../lib/mailer");
+const regdb = require("../lib/regdb");
 
 let pass = 0, group = "";
 const results = [];
@@ -337,6 +338,23 @@ await t("if ownership cannot be read, nothing is wrongly claimed as owned", asyn
     const inv = await graphapp.inventory(true);
     assert.strictEqual(inv.apps[0].owned, null, "unknown, not true");
     assert.strictEqual(inv.tenantWide, false, "cannot claim tenant-wide without knowing ownership");
+  });
+});
+
+g("new secret validity — tenant cap of less than 6 months");
+await t("1 to 5 months are accepted, including numeric strings", () => {
+  [1, 2, 3, 4, 5, "1", "5", " 4 "].forEach((v) => {
+    assert.strictEqual(regdb.assertLifetimeMonths(v), parseInt(v, 10));
+  });
+});
+await t("6 and above, below 1, and non-integers are rejected in both languages", () => {
+  [0, 6, 7, 24, -1, 5.5, 6.0, "6", "0", "24", "", "abc", "5.5", null, undefined, true].forEach((v) => {
+    assert.throws(() => regdb.assertLifetimeMonths(v), (e) => {
+      assert.ok(e.message.indexOf("1 至 5") >= 0 && e.message.indexOf("less than 6") >= 0, e.message);
+      assert.strictEqual(e.status, 400);
+      assert.strictEqual(e.code, "lifetime_months");
+      return true;
+    });
   });
 });
 
