@@ -30,7 +30,7 @@
         <p class="subtitle" id="sub"></p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn primary" id="rotateBtn" hidden>立即更新 Rotate now</button>
+        <button class="btn primary" id="rotateBtn" hidden>Update Now</button>
       </div>
     </div>
 
@@ -150,7 +150,7 @@
 
     $("#rotateBtn").hidden = !isAdmin;
     $("#rotateBtn").disabled = !!app.busy || !app.ready || !app.active;
-    $("#rotateBtn").textContent = app.busy ? "更新中… Rotating…" : "立即更新 Rotate now";
+    $("#rotateBtn").textContent = app.busy ? "Updating…" : "Update Now";
 
     $("#credRows").innerHTML = (app.credentials || []).map(function (c) {
       var acts = "";
@@ -245,12 +245,12 @@
   $("#rmClose").addEventListener("click", function () { $("#runModal").hidden = true; });
 
   $("#rotateBtn").addEventListener("click", function () {
-    AR.confirm("立即更新 Rotate now",
+    AR.confirm("Update Now",
       "為 " + app.name + " 更新用戶端密碼?\n\n" +
       "系統會建立新密碼,寫入 " + app.targetCount + " 個傳送位置,重啟服務並做健康檢查。全部成功後才會刪除舊密碼。\n\n" +
       "A new secret is created, written to " + app.targetCount + " target(s), the service is restarted and " +
       "health-checked. The old secret is deleted only if that all succeeds.",
-      { okText: "立即更新 Rotate" }).then(function (ok) {
+      { okText: "Update Now" }).then(function (ok) {
         if (!ok) return;
         $("#rotateBtn").disabled = true;
         return api("POST", "/api/apps/" + id + "/rotate").then(function () {

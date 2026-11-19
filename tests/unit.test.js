@@ -45,11 +45,14 @@ const jsonRes = (body, status) => ({
 (async () => {
 
 g("inventory — days and status");
-await t("daysLeft counts whole days, rounding down", () => {
-  // Off-boundary offsets, so the assertion can't flip on sub-millisecond timing.
-  assert.strictEqual(inventory.daysLeft(inDays(10.5)), 10);
-  assert.strictEqual(inventory.daysLeft(inDays(0.5)), 0, "expiring later today is 0 days left");
-  assert.strictEqual(inventory.daysLeft(inDays(-0.5)), -1, "already expired is negative");
+await t("daysLeft follows the calendar date, so adjacent expiry dates differ by one", () => {
+  // 19 Nov 2026, early UTC. 18 Apr 2027 is 150 calendar days later; 19 Apr is 151.
+  // The old hour-based count put both of these in the same 150-day bucket.
+  const now = Date.parse("2026-11-19T03:44:00.000Z");
+  assert.strictEqual(inventory.daysLeft("2027-04-18T20:00:00.000Z", now), 150);
+  assert.strictEqual(inventory.daysLeft("2027-04-19T02:00:00.000Z", now), 151);
+  assert.strictEqual(inventory.daysLeft("2026-11-19T23:00:00.000Z", now), 0, "later today is 0 days left");
+  assert.strictEqual(inventory.daysLeft("2026-11-18T23:00:00.000Z", now), -1, "yesterday is negative");
   assert.strictEqual(inventory.daysLeft(null), null);
 });
 await t("statusOf thresholds", () => {

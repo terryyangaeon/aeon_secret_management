@@ -180,7 +180,7 @@
       var cur = a.current;
       var rotateBtn = isAdmin
         ? '<button class="tbl-btn a-rot" data-id="' + a.id + '"' + (a.busy || !a.ready ? " disabled" : "") + ' title="' +
-          (a.ready ? "" : "No delivery target configured") + '">' + (a.busy ? "更新中…" : "立即更新 Rotate") + "</button> "
+          (a.ready ? "" : "No delivery target configured") + '">' + (a.busy ? "Updating…" : "Update Now") + "</button> "
         : "";
       return '<tr class="' + (a.active ? "" : "inactive") + '">' +
         '<td><div class="appname"><a href="/app.html?id=' + a.id + '">' + esc(a.name) + "</a></div>" +
@@ -194,7 +194,7 @@
           (a.ready ? "" : ' <span class="st warning" title="No delivery target">無目標</span>') + "</td>" +
         '<td class="nowrap muted">' + esc(a.nextRotation ? AR.fmtDate(a.nextRotation) : "—") + "</td>" +
         '<td class="right nowrap">' + rotateBtn +
-          '<a class="tbl-btn ghost" href="/app.html?id=' + a.id + '">詳情 Details</a></td>' +
+          '<a class="tbl-btn ghost" href="/app.html?id=' + a.id + '">Details</a></td>' +
         "</tr>";
     }).join("");
   }
@@ -269,12 +269,12 @@
     if (!b) return;
     var a = apps.filter(function (x) { return String(x.id) === b.getAttribute("data-id"); })[0];
     if (!a) return;
-    AR.confirm("立即更新 Rotate now",
+    AR.confirm("Update Now",
       "為 " + a.name + " 更新用戶端密碼?\n\n" +
       "系統會建立新密碼,寫入 " + a.targetCount + " 個傳送位置,重啟服務並做健康檢查。全部成功後才會刪除舊密碼。\n\n" +
       "A new secret is created, written to " + a.targetCount + " target(s), the service is restarted and " +
       "health-checked. The old secret is deleted only if that all succeeds.",
-      { okText: "立即更新 Rotate" }).then(function (ok) {
+      { okText: "Update Now" }).then(function (ok) {
         if (!ok) return;
         b.disabled = true;
         return api("POST", "/api/apps/" + a.id + "/rotate").then(function () {
