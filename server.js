@@ -270,6 +270,17 @@ app.get("/api/unmanaged", requireUser, wrap(async (_req, res) => {
   try { res.json(await inventory.unmanaged()); } catch (e) { fail(res, e); }
 }));
 
+// Same result as scripts/add-owner.ps1 for one registration: this app's service
+// principal becomes an Owner. Admin only. The script itself cannot run here —
+// it signs in interactively, and this server has no PowerShell session.
+app.post("/api/unmanaged/:objectId/grant-owner", requireAdmin, wrap(async (req, res) => {
+  try {
+    const result = await graphapp.grantOwner(req.params.objectId);
+    await regdb.audit(req.user.email, "owner.grant", req.params.objectId, { already: !!result.already });
+    res.json(result);
+  } catch (e) { fail(res, e); }
+}));
+
 app.get("/api/runs", requireUser, wrap(async (req, res) => {
   const appId = req.query.app ? idOf(req.query.app) : null;
   res.json({ runs: await regdb.listRuns({ appId, limit: req.query.limit }) });

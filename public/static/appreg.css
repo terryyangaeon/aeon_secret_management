@@ -37,6 +37,8 @@ thead th { background: #1e3a5f; color: #fff; text-align: left; padding: 12px 14p
 tbody td { padding: 12px 14px; border-bottom: 1px solid #f0eee6; font-size: 13px; vertical-align: middle; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr.inactive td { opacity: .55; }
+table.untracked { table-layout: fixed; }
+table.untracked .reg { width: 20%; overflow-wrap: anywhere; }
 .right { text-align: right; }
 .nowrap { white-space: nowrap; }
 

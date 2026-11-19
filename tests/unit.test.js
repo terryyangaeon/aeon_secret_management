@@ -296,6 +296,57 @@ function graphStub(routes) {
 const appRow = (id, name) => ({ id, appId: "client-" + id, displayName: name, passwordCredentials: [], keyCredentials: [] });
 const SP = [[/^\/servicePrincipals\?/, () => jsonRes({ value: [{ id: "sp-1", appId: "me", displayName: "Secret Management" }] })]];
 
+await t("grantOwner adds this app's service principal, and skips one that already owns it", async () => {
+  const posts = [];
+  const fn = async (url, opts) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+\/v1\.0/, "");
+    const method = (opts && opts.method) || "GET";
+    if (/oauth2\/v2\.0\/token/.test(String(url))) return jsonRes({ access_token: "t", expires_in: 3600 });
+    if (/^\/servicePrincipals\?/.test(path)) return jsonRes({ value: [{ id: "sp-1", appId: "me", displayName: "AEON Secret Management" }] });
+    if (method === "GET" && /\/owners/.test(path)) return jsonRes({ value: [] });
+    if (method === "POST" && /\/owners\/\$ref$/.test(path)) {
+      posts.push(JSON.parse(opts.body));
+      return { ok: true, status: 204, json: async () => ({}) };
+    }
+    return jsonRes({ error: { message: "no stub for " + method + " " + path } }, 404);
+  };
+  const oid = "11111111-2222-3333-4444-555555555555";
+  await withFetch(fn, async () => {
+    const r = await graphapp.grantOwner(oid);
+    assert.strictEqual(r.already, false);
+    assert.strictEqual(r.servicePrincipalId, "sp-1");
+    assert.strictEqual(posts.length, 1);
+    assert.strictEqual(posts[0]["@odata.id"], "https://graph.microsoft.com/v1.0/directoryObjects/sp-1");
+  });
+  const again = async (url, opts) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+\/v1\.0/, "");
+    const method = (opts && opts.method) || "GET";
+    if (/oauth2\/v2\.0\/token/.test(String(url))) return jsonRes({ access_token: "t", expires_in: 3600 });
+    if (/^\/servicePrincipals\?/.test(path)) return jsonRes({ value: [{ id: "sp-1", appId: "me", displayName: "AEON Secret Management" }] });
+    if (method === "GET" && /\/owners/.test(path)) return jsonRes({ value: [{ id: "sp-1" }] });
+    if (method === "POST") throw new Error("should not post when already an owner");
+    return jsonRes({ error: { message: "no stub" } }, 404);
+  };
+  await withFetch(again, async () => {
+    const r = await graphapp.grantOwner(oid);
+    assert.strictEqual(r.already, true);
+  });
+});
+await t("grantOwner says which permission is missing when Entra refuses", async () => {
+  const fn = async (url, opts) => {
+    const path = String(url).replace(/^https?:\/\/[^/]+\/v1\.0/, "");
+    const method = (opts && opts.method) || "GET";
+    if (/oauth2\/v2\.0\/token/.test(String(url))) return jsonRes({ access_token: "t", expires_in: 3600 });
+    if (/^\/servicePrincipals\?/.test(path)) return jsonRes({ value: [{ id: "sp-1", appId: "me", displayName: "AEON Secret Management" }] });
+    if (method === "GET" && /\/owners/.test(path)) return jsonRes({ value: [] });
+    if (method === "POST") return jsonRes({ error: { message: "Insufficient privileges" } }, 403);
+    return jsonRes({}, 404);
+  };
+  await withFetch(fn, async () => {
+    await assert.rejects(() => graphapp.grantOwner("11111111-2222-3333-4444-555555555555"), /Application\.ReadWrite\.All/);
+  });
+});
+
 g("graph — what can be seen vs what can be rotated");
 await t("owned registrations are flagged, others are visible but not", async () => {
   const f = graphStub(SP.concat([

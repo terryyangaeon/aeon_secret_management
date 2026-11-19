@@ -78,14 +78,15 @@
         </div>
       </div>
       <div class="tablewrap">
-        <table>
+        <table class="untracked">
           <thead><tr>
-            <th>應用程式註冊 Registration</th>
+            <th class="reg">應用程式註冊 Registration</th>
             <th>Client ID</th>
             <th>到期 Expires</th>
             <th>剩餘 Days left</th>
             <th>狀態 Status</th>
             <th>可更新 Rotatable</th>
+            <th class="right">Grant Owner 擁有者權限</th>
           </tr></thead>
           <tbody id="untrackedRows"></tbody>
         </table>
@@ -202,13 +203,16 @@
   // Registrations Entra knows about that this tool is not tracking. Without the
   // read-only Application.Read.All this can only ever list owned-but-not-added
   // ones, so say so rather than implying the tenant is clean.
+  var untracked = [], untrackedView = null;
   function renderUntracked(d) {
-    var apps = (d && d.apps) || [];
+    untrackedView = d || { apps: [] };
+    var apps = untrackedView.apps || [];
+    untracked = apps;
     $("#cUntracked").textContent = apps.length;
     $("#untrackedBlock").hidden = !apps.length;
 
     var b = $("#bReadAll");
-    b.hidden = !!(d && d.tenantWide);
+    b.hidden = !!(untrackedView && untrackedView.tenantWide);
     if (!b.hidden) {
       b.innerHTML = "此清單只包含本系統已擁有的註冊。加入唯讀的 <b>Application.Read.All</b> 權限後," +
         "儀表板便會顯示租戶內<b>所有</b>應用程式註冊,不會再有遺漏。 · This list only covers registrations this " +
@@ -218,22 +222,47 @@
 
     if (apps.length) {
       $("#untrackedSub").textContent = "Entra 有這些註冊,但本系統未有追蹤。 · In Entra but not tracked here" +
-        (d.total ? " — " + apps.length + " of " + d.total + " visible registrations." : ".");
+        (untrackedView.total ? " — " + apps.length + " of " + untrackedView.total + " visible registrations." : ".");
     }
 
     $("#untrackedRows").innerHTML = apps.map(function (a) {
       var rot = a.owned === true ? '<span class="st on">可以 Yes</span>'
               : a.owned === false ? '<span class="st off" title="Add this tool as an Owner in Entra">否 No</span>'
               : '<span class="st unknown">未知 Unknown</span>';
+      var bound = a.owned === true;
+      var grantTitle = bound ? "AEON Secret Management is already an owner"
+        : !isAdmin ? "Only admins can grant ownership" : "";
+      var grant = '<button type="button" class="tbl-btn u-grant" data-oid="' + esc(a.entraObjectId) + '"' +
+        (bound || !isAdmin ? " disabled" : "") + (grantTitle ? ' title="' + esc(grantTitle) + '"' : "") + ">Grant</button>";
       return "<tr>" +
-        "<td><b>" + esc(a.name) + "</b></td>" +
+        '<td class="reg"><b>' + esc(a.name) + "</b></td>" +
         '<td class="mono">' + esc(a.clientId || a.entraObjectId) + "</td>" +
         '<td class="nowrap">' + esc(AR.fmtDate(a.endsAt)) + "</td>" +
         '<td class="nowrap">' + esc(AR.fmtDays(a.daysLeft)) + "</td>" +
         "<td>" + AR.statusPill(a.status) + "</td>" +
-        "<td>" + rot + "</td></tr>";
+        "<td>" + rot + "</td>" +
+        '<td class="right">' + grant + "</td></tr>";
     }).join("");
   }
+
+  $("#untrackedRows").addEventListener("click", function (e) {
+    var b = e.target.closest(".u-grant");
+    if (!b || b.disabled) return;
+    var oid = b.getAttribute("data-oid");
+    var row = untracked.filter(function (a) { return a.entraObjectId === oid; })[0];
+    if (!row || row.owned === true) return;
+    b.disabled = true;
+    b.textContent = "Granting…";
+    api("POST", "/api/unmanaged/" + encodeURIComponent(oid) + "/grant-owner").then(function (r) {
+      row.owned = true;
+      AR.toast(r && r.already ? "已是擁有者 · Already an owner" : "已加入擁有者 · Owner granted");
+      renderUntracked(untrackedView);
+    }).catch(function (err) {
+      b.disabled = false;
+      b.textContent = "Grant";
+      AR.handleErr(err);
+    });
+  });
 
   function renderRuns() {
     if (!runs.length) { $("#runRows").innerHTML = '<tr><td colspan="5" class="muted">尚未有更新記錄。 · No rotations yet.</td></tr>'; return; }
