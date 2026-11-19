@@ -80,6 +80,37 @@ input:disabled, select:disabled { background: #f5f5f4; color: #a8a29e; cursor: n
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .hint { font-size: 11.5px; color: #78716c; margin-top: 4px; }
 
+/* Searchable combobox. The list is position:fixed so a scrolling dialog does not clip it. */
+.combo { position: relative; }
+.combo-list {
+  position: fixed; z-index: 2000; background: #fff; border: 1px solid #d6d3d1; border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.16); max-height: 280px; overflow: auto;
+}
+.combo-head, .combo-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 12px; align-items: center;
+  padding: 8px 12px;
+}
+.combo-head {
+  position: sticky; top: 0; z-index: 1; background: #fafaf9; border-bottom: 1px solid #f0eee6;
+  font-size: 11px; color: #78716c; text-transform: uppercase; letter-spacing: .04em; padding: 7px 12px;
+}
+.combo-row { cursor: pointer; }
+.combo-row:hover, .combo-row.on { background: #f4f6fa; }
+.combo-row b { font-weight: 650; }
+.combo-empty { padding: 10px 12px; }
+.combo-list .st { justify-self: end; }
+
+/* Several Coolify destinations on one secret, one line each. */
+.tgt-head, .tgt-line {
+  display: grid; grid-template-columns: minmax(180px, 1.35fr) minmax(150px, 1fr) minmax(200px, 1.45fr) 88px auto;
+  gap: 8px; align-items: center;
+}
+.tgt-head { font-size: 11px; color: #78716c; text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 6px; }
+.tgt-line { margin-bottom: 8px; }
+.tgt-line .chk { margin: 0; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tgt-acts { display: flex; gap: 6px; justify-content: flex-end; }
+.modal-box.targets { max-width: 1040px; }
+
 /* Modals — closed only by their own buttons, never by backdrop click or Esc. */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15,12,8,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1500; }
 .modal-box { background: #fff; border-radius: 14px; padding: 24px; width: 100%; max-width: 520px; box-shadow: 0 20px 60px rgba(0,0,0,.3); max-height: 90vh; overflow-y: auto; }
@@ -116,5 +147,11 @@ html.in-iframe .layout { min-height: 100vh; }
   .layout { flex-direction: column; }
   .sidebar { width: auto; flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 10px; }
   .side-item { width: auto; white-space: nowrap; margin: 0; }
-  .row2 { grid-template-columns: 1fr; }
+  .row2, .tgt-head, .tgt-line { grid-template-columns: 1fr; }
+  .tgt-head { display: none; }
+  .tgt-cell::before {
+    content: attr(data-label); display: block; margin-bottom: 4px;
+    font-size: 11px; color: #78716c; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .tgt-cell[data-label=""]::before { display: none; }
 }

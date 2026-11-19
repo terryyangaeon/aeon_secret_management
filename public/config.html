@@ -58,8 +58,8 @@
         <!-- Targets -->
         <section id="view-targets" hidden>
           <h1 class="sect">傳送位置 Delivery targets</h1>
-          <p class="hint" style="margin-top:-6px">更新後的新密碼會寫入這些 Coolify 環境變數。
-            · After a rotation the new secret is written into these Coolify environment variables.</p>
+          <p class="hint" style="margin-top:-6px">更新後的新密碼會寫入這些 Coolify 環境變數。同一個密碼可以對應多個網址，例如正式與開發。
+            · After a rotation the new secret is written into these Coolify environment variables. One secret can cover more than one URL, for example production and dev.</p>
           <div class="pick">
             <select id="tgtApp"></select>
             <button class="btn primary" id="addTgtBtn" disabled>+ 加入目標 Add target</button>
@@ -140,7 +140,11 @@
 
     <div id="amPickBlock">
       <div class="fieldlbl">Entra 應用程式註冊 App registration <span class="lh">(owned by this tool)</span></div>
-      <select id="amPick"><option value="">Loading…</option></select>
+      <div class="combo" id="amCombo">
+        <input type="text" id="amPickSearch" placeholder="搜尋名稱 · Search by name" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="amPickList">
+        <input type="hidden" id="amPick" value="">
+        <div class="combo-list" id="amPickList" hidden role="listbox"></div>
+      </div>
       <div class="hint" id="amPickHint"></div>
     </div>
 
@@ -183,28 +187,25 @@
     </div>
   </div></div>
 
-  <!-- Add / edit target -->
-  <div class="modal-overlay" id="tgtModal" hidden><div class="modal-box wide">
-    <div class="modal-title" id="tmTitle">加入傳送位置 Add delivery target</div>
-    <div class="fieldlbl">標籤 Label <span class="lh">(optional)</span></div><input type="text" id="tmLabel" placeholder="App service">
-    <div class="row2">
-      <div><div class="fieldlbl">Coolify 應用程式 Application</div><select id="tmApp"><option value="">…</option></select></div>
-      <div>
-        <div class="fieldlbl">環境變數 Variable</div>
-        <select id="tmVarPick"><option value="">— 自行輸入 type it below —</option></select>
-        <input type="text" id="tmVar" placeholder="SSO_CLIENT_SECRET" style="margin-top:6px">
-      </div>
+  <!-- Delivery targets for one secret: one line per Coolify application. -->
+  <div class="modal-overlay" id="tgtModal" hidden><div class="modal-box targets">
+    <div class="modal-title" id="tmTitle">傳送位置 Delivery targets</div>
+    <p class="hint" style="margin-top:0">每一行是一個 Coolify 應用程式、它的環境變數，以及健康檢查網址。按儲存才會寫入。
+      · Each line is one Coolify application, its environment variable, and a health check URL. Nothing is written until you save.</p>
+    <div class="tgt-head">
+      <span>Coolify 應用程式 Application</span>
+      <span>環境變數 Variable</span>
+      <span>健康檢查 Health check URL</span>
+      <span>重啟 Restart</span>
+      <span></span>
     </div>
-    <div class="fieldlbl">健康檢查網址 Health check URL <span class="lh">(blank = the app URL, for the first target)</span></div>
-    <input type="text" id="tmHealth" placeholder="https://attendance.aeondelightasia.online/api/health">
-    <label class="chk"><input type="checkbox" id="tmRestart" checked> 寫入後重啟應用程式 · Restart the application after writing</label>
-    <div class="hint" id="tmHint"></div>
+    <div id="tmLines"></div>
+    <button type="button" class="btn ghost" id="tmAddLine">+ 加入應用程式 Add application</button>
+    <div class="hint" id="tmHint">健康檢查留空時，第一行會用這個密碼的 App URL。 · If the health check is blank, the first line uses this secret's App URL.</div>
     <div class="modal-acts">
-      <button class="btn danger" id="tmDelete" hidden>刪除 Delete</button>
-      <button class="btn ghost" id="tmTest" hidden>測試 Test</button>
       <span style="flex:1"></span>
-      <button class="btn ghost" id="tmCancel">取消 Cancel</button>
-      <button class="btn primary" id="tmSave">儲存 Save</button>
+      <button type="button" class="btn ghost" id="tmCancel">取消 Cancel</button>
+      <button type="button" class="btn primary" id="tmSave">儲存 Save</button>
     </div>
   </div></div>
 
@@ -215,7 +216,7 @@
 (function () {
   "use strict";
   var $ = AR.$, $$ = AR.$$, esc = AR.esc, api = AR.api;
-  var apps = [], discovered = [], editingApp = null, editingTgt = null, tgtAppId = null;
+  var apps = [], discovered = [], editingApp = null, tgtAppId = null;
 
   // ---- View switching ----
   var TITLES = { apps: "應用程式 Applications", targets: "傳送位置 Delivery targets",
@@ -287,38 +288,103 @@
     if (!a) discover();
   }
 
-  function discover() {
-    $("#amPick").innerHTML = '<option value="">Loading…</option>';
-    api("GET", "/api/config/discover").then(function (d) {
-      discovered = d.apps || [];
-      if (d.self) $("#selfSp").innerHTML = " 本系統的服務主體 · This tool's service principal: <b>" + esc(d.self.name) + "</b>";
-      var free = discovered.filter(function (x) { return !x.managedId; });
-      // A registration this tool does not own can still be tracked for expiry,
-      // but Graph would refuse a rotation on it — so label it rather than hide it.
-      $("#amPick").innerHTML = '<option value="">— 請選擇 choose —</option>' + free.map(function (x) {
-        var tag = x.owned === false ? "  [唯讀 read-only · 未擁有 not owned]" : "";
-        return '<option value="' + esc(x.objectId) + '">' + esc(x.name) + " — " + esc(x.clientId) + esc(tag) + "</option>";
-      }).join("");
-      if (!free.length) {
-        $("#amPickHint").textContent = discovered.length
-          ? "所有可見的註冊都已加入。 · Every registration this tool can see is already added."
-          : "本系統未被列為任何應用程式註冊的擁有者。請執行 scripts\add-owner.ps1。 · " +
-            "This tool is not an Owner of any app registration yet — run scripts\add-owner.ps1.";
-      } else if (!d.tenantWide) {
-        $("#amPickHint").textContent = "只列出本系統擁有的註冊。加入唯讀的 Application.Read.All 權限後,這裡會顯示租戶內所有註冊。 · " +
-          "Only registrations this tool owns are listed. Grant the read-only Application.Read.All permission to see every registration in the tenant.";
+  // Searchable list. items() is read on each keystroke. A status column is
+  // optional; the closed field shows the name only, never an id.
+  function combo(opts) {
+    var input = opts.input, list = opts.list, hidden = opts.hidden, active = -1;
+    function rows() {
+      var q = input.getAttribute("data-filter") === "1" ? input.value.trim().toLowerCase() : "";
+      return opts.items().filter(function (it) {
+        if (!q) return true;
+        return it.name.toLowerCase().indexOf(q) >= 0 || (it.sub && it.sub.toLowerCase().indexOf(q) >= 0);
+      });
+    }
+    function paint() {
+      var found = rows();
+      if (active >= found.length) active = found.length - 1;
+      var head = opts.columns
+        ? '<div class="combo-head"><span>' + opts.columns[0] + "</span><span>" + opts.columns[1] + "</span></div>"
+        : "";
+      list.innerHTML = head + (found.length ? found.map(function (it, i) {
+        return '<div class="combo-row' + (i === active ? " on" : "") + '" data-i="' + i + '" role="option">' +
+          "<span><b>" + esc(it.name) + "</b>" +
+            (it.sub ? '<div class="muted">' + esc(it.sub) + "</div>" : "") + "</span>" +
+          (opts.columns ? "<span>" + (it.status ? '<span class="st warning">' + esc(it.status) + "</span>" : "") + "</span>" : "") +
+          "</div>";
+      }).join("") : '<div class="combo-empty muted">沒有相符的項目。 · No matches.</div>');
+      var on = list.querySelector(".combo-row.on");
+      if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+    }
+    function place() {
+      var r = input.getBoundingClientRect();
+      var below = window.innerHeight - r.bottom;
+      list.style.left = r.left + "px";
+      var w = Math.max(r.width, opts.columns ? 420 : r.width);
+      list.style.width = Math.min(w, window.innerWidth - 16) + "px";
+      list.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.min(w, window.innerWidth - 16) - 8)) + "px";
+      if (below < 220 && r.top > below) {
+        list.style.top = "auto";
+        list.style.bottom = (window.innerHeight - r.top + 4) + "px";
       } else {
-        $("#amPickHint").textContent = "標示「未擁有」的註冊可以追蹤到期日,但不能自動更新 — 需先用 scripts\add-owner.ps1 加為擁有者。 · " +
-          "Registrations marked “not owned” can be tracked for expiry but not rotated — run scripts\add-owner.ps1 to opt them in.";
+        list.style.bottom = "auto";
+        list.style.top = (r.bottom + 4) + "px";
       }
-    }).catch(function (e) {
-      $("#amPick").innerHTML = '<option value="">—</option>';
-      $("#amPickHint").textContent = (e && e.message) || "Could not read app registrations.";
+    }
+    function open() {
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      paint();
+      place();
+    }
+    function close() {
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.setAttribute("data-filter", "0");
+      active = -1;
+    }
+    function choose(it) {
+      if (!it) return;
+      input.value = it.name;
+      if (hidden) hidden.value = it.id;
+      close();
+      if (opts.onPick) opts.onPick(it);
+    }
+    input.addEventListener("focus", function () { input.setAttribute("data-filter", "0"); active = -1; open(); });
+    input.addEventListener("blur", function () { setTimeout(close, 0); });
+    input.addEventListener("input", function () {
+      input.setAttribute("data-filter", "1");
+      if (hidden) hidden.value = "";
+      active = 0;
+      open();
     });
+    input.addEventListener("keydown", function (e) {
+      var found = rows();
+      if (e.key === "ArrowDown") { e.preventDefault(); if (list.hidden) open(); active = Math.min(found.length - 1, active + 1); paint(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(0, active - 1); paint(); }
+      else if (e.key === "Enter" && !list.hidden && found[active]) { e.preventDefault(); choose(found[active]); }
+      else if (e.key === "Escape") close();
+    });
+    list.addEventListener("mousedown", function (e) { e.preventDefault(); });
+    list.addEventListener("click", function (e) {
+      var row = e.target.closest(".combo-row");
+      if (!row) return;
+      choose(rows()[parseInt(row.getAttribute("data-i"), 10)]);
+    });
+    input._comboPlace = function () { if (!list.hidden) place(); };
+    input._comboClose = close;
   }
 
-  $("#amPick").addEventListener("change", function () {
-    var x = discovered.filter(function (d) { return d.objectId === $("#amPick").value; })[0];
+  function entraItems() {
+    return discovered.filter(function (x) { return !x.managedId; }).map(function (x) {
+      return {
+        id: x.objectId,
+        name: x.name || "",
+        // The client id stays off the list. Ownership is its own column.
+        status: x.owned === false ? "唯讀 Read-only · 未擁有 Not owned" : ""
+      };
+    });
+  }
+  function applyRegistration(x) {
     if (!x) return;
     if (!$("#amName").value) $("#amName").value = x.name;
     var r = (x.redirectUris || [])[0];
@@ -328,7 +394,45 @@
       ? secs.length + " 個密碼,最遲到期 " + String(secs[secs.length - 1].endsAt).slice(0, 10) +
         " · " + secs.length + " secret(s), latest expiry " + String(secs[secs.length - 1].endsAt).slice(0, 10)
       : "此註冊目前沒有用戶端密碼。 · This registration has no client secret yet.";
+  }
+  combo({
+    input: $("#amPickSearch"), list: $("#amPickList"), hidden: $("#amPick"),
+    columns: ["名稱 Name", "狀態 Status"],
+    items: entraItems,
+    onPick: function (it) {
+      applyRegistration(discovered.filter(function (d) { return d.objectId === it.id; })[0]);
+    }
   });
+
+  function discover() {
+    $("#amPick").value = "";
+    $("#amPickSearch").value = "";
+    $("#amPickSearch").disabled = true;
+    $("#amPickSearch").placeholder = "Loading…";
+    api("GET", "/api/config/discover").then(function (d) {
+      discovered = d.apps || [];
+      $("#amPickSearch").disabled = false;
+      $("#amPickSearch").placeholder = "搜尋名稱 · Search by name";
+      if (d.self) $("#selfSp").innerHTML = " 本系統的服務主體 · This tool's service principal: <b>" + esc(d.self.name) + "</b>";
+      var free = discovered.filter(function (x) { return !x.managedId; });
+      if (!free.length) {
+        $("#amPickHint").textContent = discovered.length
+          ? "所有可見的註冊都已加入。 · Every registration this tool can see is already added."
+          : "本系統未被列為任何應用程式註冊的擁有者。請執行 scripts\\add-owner.ps1。 · " +
+            "This tool is not an Owner of any app registration yet — run scripts\\add-owner.ps1.";
+      } else if (!d.tenantWide) {
+        $("#amPickHint").textContent = "只列出本系統擁有的註冊。加入唯讀的 Application.Read.All 權限後,這裡會顯示租戶內所有註冊。 · " +
+          "Only registrations this tool owns are listed. Grant the read-only Application.Read.All permission to see every registration in the tenant.";
+      } else {
+        $("#amPickHint").textContent = "狀態欄顯示「未擁有」的註冊可以追蹤到期日,但不能自動更新 — 需先用 scripts\\add-owner.ps1 加為擁有者。 · " +
+          "Registrations marked not owned in the status column can be tracked for expiry but not rotated — run scripts\\add-owner.ps1 to opt them in.";
+      }
+    }).catch(function (e) {
+      $("#amPickSearch").disabled = false;
+      $("#amPickSearch").placeholder = "搜尋名稱 · Search by name";
+      $("#amPickHint").textContent = (e && e.message) || "Could not read app registrations.";
+    });
+  }
 
   $("#amCancel").addEventListener("click", function () { $("#appModal").hidden = true; });
   // Keep this sentence identical to regdb.LIFETIME_MONTHS_ERROR.
@@ -382,7 +486,18 @@
   });
   $("#addAppBtn").addEventListener("click", function () { openApp(null); });
 
+  document.addEventListener("mousedown", function (e) {
+    var host = e.target.closest(".combo");
+    $$(".combo-list").forEach(function (l) { if (!host || !host.contains(l)) l.hidden = true; });
+  });
+  $$(".modal-box").forEach(function (box) {
+    box.addEventListener("scroll", function () {
+      $$(".combo input").forEach(function (inp) { if (inp._comboPlace) inp._comboPlace(); });
+    });
+  });
+
   // ---- Targets ----
+  var coolifyApps = [], removedTargetIds = [];
   function fillTargetApps() {
     var sel = $("#tgtApp");
     var keep = sel.value;
@@ -402,8 +517,7 @@
     return api("GET", "/api/config/apps/" + tgtAppId + "/targets").then(function (d) {
       $("#tgtRows").innerHTML = (d.targets || []).map(function (t) {
         return "<tr><td>" + esc(t.label || "—") + "</td>" +
-          "<td>" + esc(t.app_name || t.app_uuid) +
-            (t.app_name ? '<div class="sub muted mono">' + esc(String(t.app_uuid).slice(0, 12)) + "</div>" : "") + "</td>" +
+          "<td>" + esc(t.app_name || "—") + "</td>" +
           '<td class="mono">' + esc(t.var_name) + "</td>" +
           "<td>" + (t.restart ? "是 Yes" : "否 No") + "</td>" +
           "<td>" + (t.health_url ? esc(t.health_url) : '<span class="muted">—</span>') + "</td>" +
@@ -415,100 +529,176 @@
 
   $("#tgtRows").addEventListener("click", function (e) {
     var b = e.target.closest(".t-edit");
-    if (b) openTarget((window._targets || []).filter(function (t) { return String(t.id) === b.getAttribute("data-id"); })[0]);
+    if (b) openTargets();
   });
-  $("#addTgtBtn").addEventListener("click", function () { openTarget(null); });
+  $("#addTgtBtn").addEventListener("click", function () { openTargets(); });
 
-  function openTarget(t) {
-    editingTgt = t || null;
-    $("#tmTitle").textContent = t ? "編輯傳送位置 Edit delivery target" : "加入傳送位置 Add delivery target";
-    $("#tmLabel").value = t ? t.label : "";
-    $("#tmVar").value = t ? t.var_name : "";
-    $("#tmHealth").value = t ? t.health_url : "";
-    $("#tmRestart").checked = t ? t.restart : true;
-    $("#tmDelete").hidden = !t;
-    $("#tmTest").hidden = !t;
-    $("#tmHint").textContent = "";
-    $("#tgtModal").hidden = false;
-    loadApplications(t);
-  }
-
-  function fillSel(sel, items, selected, placeholder) {
-    sel.innerHTML = '<option value="">' + placeholder + "</option>" + items.map(function (i) {
-      return '<option value="' + esc(i.id) + '"' + (i.id === selected ? " selected" : "") + ">" + esc(i.name) + "</option>";
-    }).join("");
-  }
-
-  function loadApplications(t) {
-    fillSel($("#tmApp"), [], "", "Loading…");
-    return api("GET", "/api/config/coolify/applications").then(function (d) {
-      var apps = (d.applications || []).map(function (a) {
-        return { id: a.uuid, name: a.name + (a.fqdn ? "  —  " + a.fqdn.replace(/^https?:\/\//, "") : "") };
-      });
-      fillSel($("#tmApp"), apps, t ? t.app_uuid : "", "— 請選擇 choose —");
-      if (t && t.app_uuid) return loadVars();
-    }).catch(function (e) {
-      fillSel($("#tmApp"), [], "", "—");
-      $("#tmHint").textContent = (e && e.message) || "Could not read Coolify applications.";
+  function coolifyItems() {
+    return coolifyApps.map(function (a) {
+      var host = String(a.fqdn || "").replace(/^https?:\/\//, "");
+      return { id: a.uuid, name: a.name || host || a.uuid, sub: host, fqdn: a.fqdn || "" };
     });
   }
-
-  function loadVars() {
-    var a = $("#tmApp").value;
-    fillSel($("#tmVarPick"), [], "", "— 自行輸入 type it below —");
-    if (!a) return Promise.resolve();
-    return api("GET", "/api/config/coolify/variables?app=" + encodeURIComponent(a))
-      .then(function (d) {
-        $("#tmVarPick").innerHTML = '<option value="">— 自行輸入 type it below —</option>' + (d.keys || []).map(function (k) {
-          return '<option value="' + esc(k) + '"' + (k === $("#tmVar").value ? " selected" : "") + ">" + esc(k) + "</option>";
-        }).join("");
-        $("#tmHint").textContent = d.readable ? "" :
-          "Coolify 沒有回傳變數內容(權杖缺少 read:sensitive),更新前無法備份舊值。 · Coolify did not return variable values " +
-          "(the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
-      }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+  var varListSeq = 1;
+  function addLine(t) {
+    var n = varListSeq++;
+    var row = document.createElement("div");
+    row.className = "tgt-line";
+    if (t && t.id) row.setAttribute("data-id", String(t.id));
+    row.innerHTML =
+      '<div class="tgt-cell" data-label="Coolify 應用程式 Application"><div class="combo">' +
+        '<input type="text" class="tm-app" placeholder="搜尋應用程式 · Search" autocomplete="off" spellcheck="false" value="' + esc(t ? (t.app_name || "") : "") + '">' +
+        '<input type="hidden" class="tm-app-id" value="' + esc(t ? (t.app_uuid || "") : "") + '">' +
+        '<div class="combo-list" hidden></div></div></div>' +
+      '<div class="tgt-cell" data-label="環境變數 Variable">' +
+        '<input type="text" class="tm-var" placeholder="SSO_CLIENT_SECRET" list="tmVars' + n + '" value="' + esc(t ? (t.var_name || "") : "") + '">' +
+        '<datalist id="tmVars' + n + '"></datalist></div>' +
+      '<div class="tgt-cell" data-label="健康檢查 Health check URL">' +
+        '<input type="text" class="tm-health" placeholder="https://…/api/health" value="' + esc(t ? (t.health_url || "") : "") + '"></div>' +
+      '<label class="chk tgt-cell" data-label="重啟 Restart"><input type="checkbox" class="tm-restart"' + ((!t || t.restart) ? " checked" : "") + "></label>" +
+      '<div class="tgt-acts tgt-cell" data-label="">' +
+        '<button type="button" class="tbl-btn ghost tm-test"' + (t && t.id ? "" : " hidden") + ">測試 Test</button>" +
+        '<button type="button" class="btn ghost tm-remove" title="移除 Remove">✕</button></div>';
+    $("#tmLines").appendChild(row);
+    var input = row.querySelector(".tm-app");
+    var hidden = row.querySelector(".tm-app-id");
+    combo({
+      input: input, list: row.querySelector(".combo-list"), hidden: hidden,
+      items: coolifyItems,
+      onPick: function (it) {
+        var health = row.querySelector(".tm-health");
+        if (it.fqdn) health.placeholder = String(it.fqdn).replace(/\/$/, "") + "/api/health";
+        loadVarNames(it.id, row.querySelector("datalist"));
+      }
+    });
+    if (t && t.app_uuid) loadVarNames(t.app_uuid, row.querySelector("datalist"));
   }
-
-  $("#tmApp").addEventListener("change", function () { loadVars().catch(AR.handleErr); });
-  $("#tmVarPick").addEventListener("change", function () { if ($("#tmVarPick").value) $("#tmVar").value = $("#tmVarPick").value; });
-
-  $("#tmCancel").addEventListener("click", function () { $("#tgtModal").hidden = true; });
-  $("#tmSave").addEventListener("click", function () {
-    var sel = function (s) { var o = $(s).selectedOptions[0]; return o ? o.textContent : ""; };
-    var b = {
-      label: $("#tmLabel").value.trim(),
-      appUuid: $("#tmApp").value,
-      appName: (sel("#tmApp").split("  —  ")[0] || "").trim(),
-      varName: $("#tmVar").value.trim(),
-      restart: $("#tmRestart").checked,
-      healthUrl: $("#tmHealth").value.trim()
-    };
-    var p = editingTgt ? api("PUT", "/api/config/targets/" + editingTgt.id, b)
-                       : api("POST", "/api/config/apps/" + tgtAppId + "/targets", b);
-    $("#tmSave").disabled = true;
-    p.then(function () { $("#tgtModal").hidden = true; AR.toast("已儲存 · Saved"); return loadTargets().then(loadApps); })
-      .catch(AR.handleErr).then(function () { $("#tmSave").disabled = false; });
+  function loadVarNames(uuid, dl) {
+    if (!uuid) { dl.innerHTML = ""; return Promise.resolve(); }
+    return api("GET", "/api/config/coolify/variables?app=" + encodeURIComponent(uuid)).then(function (d) {
+      dl.innerHTML = (d.keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
+      if (!d.readable) $("#tmHint").textContent =
+        "Coolify 沒有回傳變數內容(權杖缺少 read:sensitive),更新前無法備份舊值。 · Coolify did not return variable values " +
+        "(the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
+    }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+  }
+  function openTargets() {
+    if (!tgtAppId) return;
+    removedTargetIds = [];
+    var name = ($("#tgtApp").selectedOptions[0] && $("#tgtApp").selectedOptions[0].textContent) || "";
+    $("#tmTitle").textContent = "傳送位置 Delivery targets — " + name;
+    $("#tmLines").innerHTML = "";
+    $("#tmHint").textContent = "載入 Coolify 應用程式… · Loading Coolify applications…";
+    $("#tgtModal").hidden = false;
+    var existing = (window._targets || []).slice();
+    api("GET", "/api/config/coolify/applications").then(function (d) {
+      coolifyApps = d.applications || [];
+      $("#tmHint").textContent = "健康檢查留空時，第一行會用這個密碼的 App URL。 · If the health check is blank, the first line uses this secret's App URL.";
+      if (!existing.length) addLine(null);
+      else existing.forEach(function (t) { addLine(t); });
+    }).catch(function (e) {
+      $("#tmHint").textContent = (e && e.message) || "Could not read Coolify applications.";
+      if (!existing.length) addLine(null);
+      else existing.forEach(function (t) { addLine(t); });
+    });
+  }
+  $("#tmAddLine").addEventListener("click", function () {
+    addLine(null);
+    var inputs = $$("#tmLines .tm-app");
+    if (inputs.length) inputs[inputs.length - 1].focus();
   });
-  $("#tmDelete").addEventListener("click", function () {
-    if (!editingTgt) return;
-    AR.confirm("刪除傳送位置 Delete delivery target",
-      "刪除這個傳送位置?\n\nDelete this delivery target?",
-      { okText: "刪除 Delete", danger: true }).then(function (ok) {
-        if (!ok) return;
-        return api("DELETE", "/api/config/targets/" + editingTgt.id)
-          .then(function () { $("#tgtModal").hidden = true; AR.toast("已刪除 · Deleted"); return loadTargets().then(loadApps); })
-          .catch(AR.handleErr);
-      });
-  });
-  $("#tmTest").addEventListener("click", function () {
-    if (!editingTgt) return;
-    $("#tmTest").disabled = true;
-    api("POST", "/api/config/targets/" + editingTgt.id + "/test").then(function (r) {
+  $("#tmLines").addEventListener("click", function (e) {
+    var row = e.target.closest(".tgt-line");
+    if (!row) return;
+    if (e.target.closest(".tm-remove")) {
+      var id = row.getAttribute("data-id");
+      if (id) removedTargetIds.push(id);
+      row.remove();
+      return;
+    }
+    var test = e.target.closest(".tm-test");
+    if (!test) return;
+    var tid = row.getAttribute("data-id");
+    if (!tid) return;
+    test.disabled = true;
+    api("POST", "/api/config/targets/" + tid + "/test").then(function (r) {
       AR.msg("測試結果 · Test result",
         (r.exists ? "✓ 變數存在 · the variable exists" + (r.hint ? " (" + r.hint + ")" : "") : "✕ 變數不存在,更新時會新增 · the variable does not exist yet; a rotation would create it") +
         "\n" + (r.readable ? "✓ 可讀回舊值,支援還原 · the current value can be read back, so rollback is possible"
                            : "！ 無法讀回舊值 · the current value cannot be read back") +
         (r.health ? "\n" + (r.health.ok ? "✓ 健康檢查 HTTP " + r.health.status : "✕ 健康檢查失敗 · health check failed: " + (r.health.error || "HTTP " + r.health.status)) : ""));
-    }).catch(AR.handleErr).then(function () { $("#tmTest").disabled = false; });
+    }).catch(AR.handleErr).then(function () { test.disabled = false; });
+  });
+
+  function readLines() {
+    return $$("#tmLines .tgt-line").map(function (row) {
+      var uuid = row.querySelector(".tm-app-id").value;
+      var known = coolifyApps.filter(function (a) { return a.uuid === uuid; })[0];
+      return {
+        id: row.getAttribute("data-id") || "",
+        appUuid: uuid,
+        appName: (known && known.name) || row.querySelector(".tm-app").value.trim(),
+        varName: row.querySelector(".tm-var").value.trim(),
+        healthUrl: row.querySelector(".tm-health").value.trim(),
+        restart: row.querySelector(".tm-restart").checked,
+        row: row
+      };
+    });
+  }
+
+  $("#tmCancel").addEventListener("click", function () { $("#tgtModal").hidden = true; });
+  $("#tmSave").addEventListener("click", function () {
+    var raw = readLines();
+    var lines = [], seen = {};
+    for (var i = 0; i < raw.length; i++) {
+      var L = raw[i];
+      if (!L.appUuid && !L.appName && !L.varName && !L.healthUrl) continue;
+      if (!L.appUuid || !L.varName) {
+        return AR.msg("請填寫每一行 · Complete each line",
+          "每一行都需要一個 Coolify 應用程式和環境變數。健康檢查網址可以留空。 · Each line needs a Coolify application and an environment variable. The health check URL can be left blank.");
+      }
+      var key = L.appUuid + "\n" + L.varName;
+      if (seen[key]) {
+        return AR.msg("重複的傳送位置 · Duplicate destination",
+          "同一個 Coolify 應用程式不能有兩行相同的環境變數。 · The same Coolify application and variable are on more than one line.");
+      }
+      seen[key] = 1;
+      lines.push(L);
+    }
+    function persist() {
+      $("#tmSave").disabled = true;
+      var chain = Promise.resolve();
+      lines.forEach(function (L, i) {
+        chain = chain.then(function () {
+          var body = { label: L.appName, appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
+          var req = L.id ? api("PUT", "/api/config/targets/" + L.id, body)
+                         : api("POST", "/api/config/apps/" + tgtAppId + "/targets", body);
+          return req.then(function (r) {
+            if (!L.id && r && r.target && r.target.id) {
+              L.id = String(r.target.id);
+              L.row.setAttribute("data-id", L.id);
+              var btn = L.row.querySelector(".tm-test");
+              if (btn) btn.hidden = false;
+            }
+          });
+        });
+      });
+      removedTargetIds.slice().forEach(function (id) {
+        chain = chain.then(function () {
+          return api("DELETE", "/api/config/targets/" + id).then(function () {
+            removedTargetIds = removedTargetIds.filter(function (x) { return x !== id; });
+          });
+        });
+      });
+      chain.then(function () { $("#tgtModal").hidden = true; AR.toast("已儲存 · Saved"); return loadTargets().then(loadApps); })
+        .catch(AR.handleErr).then(function () { $("#tmSave").disabled = false; });
+    }
+    if (!lines.length && removedTargetIds.length) {
+      return AR.confirm("移除全部傳送位置 Remove all delivery targets",
+        "這會刪除這個密碼的所有 Coolify 傳送位置。\n\nThis removes every Coolify destination for this secret.",
+        { okText: "移除 Remove", danger: true }).then(function (ok) { if (ok) persist(); });
+    }
+    persist();
   });
 
   // ---- Coolify ----
