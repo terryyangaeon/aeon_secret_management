@@ -16,6 +16,10 @@
   .sub { font-size: 11.5px; color: #a8a29e; margin-top: 2px; }
   .cfglink { font-size: 12px; }
   html:not(.in-iframe) .iframe-only { display: none; }
+  .tabs { display: flex; gap: 4px; margin: 4px 0 16px; border-bottom: 1px solid #e7e5e4; flex-wrap: wrap; }
+  .tab { background: transparent; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 10px 16px; font: inherit; font-weight: 700; color: #78716c; cursor: pointer; }
+  .tab:hover { color: #1c1917; }
+  .tab.on { color: #90207a; border-bottom-color: #FFCC00; }
 </style>
 </head>
 <body>
@@ -47,36 +51,40 @@
       <div class="card amber"><div class="n" id="cUntracked">0</div><div class="l">未納入管理 Not tracked</div></div>
     </div>
 
-    <div class="denied" id="empty" hidden>
-      <p style="margin:0 0 8px"><b>未有已登記的應用程式。 · No applications registered yet.</b></p>
-      <p class="muted" style="margin:0">管理員可到 <a href="/config.html">設定 Configuration</a> 加入。
-        · An admin can add them in Configuration. Only app registrations where this tool is listed as an
-        <b>Owner</b> in Entra can be managed.</p>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab on" data-tab="apps" role="tab" aria-selected="true">應用程式 Applications</button>
+      <button type="button" class="tab" data-tab="untracked" role="tab" aria-selected="false">未納入管理 Not tracked</button>
+      <button type="button" class="tab" data-tab="runs" role="tab" aria-selected="false">最近更新記錄 Recent rotations</button>
     </div>
 
-    <div class="tablewrap" id="tableWrap" hidden>
-      <table>
-        <thead><tr>
-          <th>應用程式 Application</th>
-          <th>目前密碼 Current secret</th>
-          <th>到期 Expires</th>
-          <th>剩餘 Days left</th>
-          <th>狀態 Status</th>
-          <th>自動更新 Auto-rotate</th>
-          <th>下次 Next</th>
-          <th class="right">　</th>
-        </tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
-    </div>
-
-    <div id="untrackedBlock" hidden>
-      <div class="head-row" style="margin:26px 0 12px">
-        <div>
-          <h2 class="pagetitle" style="font-size:16px">未納入管理 Not tracked</h2>
-          <p class="subtitle" id="untrackedSub"></p>
-        </div>
+    <div id="tab-apps">
+      <div class="denied" id="empty" hidden>
+        <p style="margin:0 0 8px"><b>未有已登記的應用程式。 · No applications registered yet.</b></p>
+        <p class="muted" style="margin:0">管理員可到 <a href="/config.html">設定 Configuration</a> 加入。
+          · An admin can add them in Configuration. Only app registrations where this tool is listed as an
+          <b>Owner</b> in Entra can be managed.</p>
       </div>
+
+      <div class="tablewrap" id="tableWrap" hidden>
+        <table>
+          <thead><tr>
+            <th>應用程式 Application</th>
+            <th>目前密碼 Current secret</th>
+            <th>到期 Expires</th>
+            <th>剩餘 Days left</th>
+            <th>狀態 Status</th>
+            <th>自動更新 Auto-rotate</th>
+            <th>下次 Next</th>
+            <th class="right">　</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-untracked" hidden>
+      <p class="subtitle" id="untrackedSub" style="margin-top:0"></p>
+      <div class="banner info" id="bReadAll" hidden></div>
       <div class="tablewrap">
         <table class="untracked">
           <thead><tr>
@@ -93,16 +101,13 @@
       </div>
     </div>
 
-    <div class="banner info" id="bReadAll" hidden></div>
-
-    <div class="head-row" style="margin:26px 0 12px">
-      <h2 class="pagetitle" style="font-size:16px">最近更新記錄 Recent rotations</h2>
-    </div>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>時間 When</th><th>應用程式 Application</th><th>觸發 Trigger</th><th>結果 Result</th><th>詳情 Detail</th></tr></thead>
-        <tbody id="runRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-      </table>
+    <div id="tab-runs" hidden>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>時間 When</th><th>應用程式 Application</th><th>觸發 Trigger</th><th>結果 Result</th><th>詳情 Detail</th></tr></thead>
+          <tbody id="runRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -119,7 +124,18 @@
 <script>
 (function () {
   "use strict";
-  var $ = AR.$, esc = AR.esc, api = AR.api;
+  var $ = AR.$, $$ = AR.$$, esc = AR.esc, api = AR.api;
+  document.querySelector(".tabs").addEventListener("click", function (e) {
+    var b = e.target.closest(".tab");
+    if (!b) return;
+    var name = b.getAttribute("data-tab");
+    $$(".tab").forEach(function (t) {
+      var on = t === b;
+      t.classList.toggle("on", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    ["apps", "untracked", "runs"].forEach(function (k) { $("#tab-" + k).hidden = k !== name; });
+  });
   var isAdmin = false, apps = [], runs = [];
 
   function load() {
@@ -135,7 +151,6 @@
       // because an optional tenant-wide read is unavailable.
       return api("GET", "/api/unmanaged").then(renderUntracked, function (e) {
         if (e && e.h) throw e;
-        $("#untrackedBlock").hidden = true;
         $("#cUntracked").textContent = "—";
         var b = $("#bReadAll");
         b.hidden = false;
@@ -209,7 +224,6 @@
     var apps = untrackedView.apps || [];
     untracked = apps;
     $("#cUntracked").textContent = apps.length;
-    $("#untrackedBlock").hidden = !apps.length;
 
     var b = $("#bReadAll");
     b.hidden = !!(untrackedView && untrackedView.tenantWide);
@@ -218,11 +232,6 @@
         "儀表板便會顯示租戶內<b>所有</b>應用程式註冊,不會再有遺漏。 · This list only covers registrations this " +
         "tool already owns. Grant the read-only <b>Application.Read.All</b> permission and the dashboard " +
         "will show <b>every</b> registration in the tenant, so none can expire unnoticed.";
-    }
-
-    if (apps.length) {
-      $("#untrackedSub").textContent = "Entra 有這些註冊,但本系統未有追蹤。 · In Entra but not tracked here" +
-        (untrackedView.total ? " — " + apps.length + " of " + untrackedView.total + " visible registrations." : ".");
     }
 
     $("#untrackedRows").innerHTML = apps.map(function (a) {
@@ -242,7 +251,11 @@
         "<td>" + AR.statusPill(a.status) + "</td>" +
         "<td>" + rot + "</td>" +
         '<td class="right">' + grant + "</td></tr>";
-    }).join("");
+    }).join("") || '<tr><td colspan="7" class="muted">未有未納入管理的註冊。 · No untracked registrations.</td></tr>';
+    $("#untrackedSub").textContent = apps.length
+      ? "Entra 有這些註冊,但本系統未有追蹤。 · In Entra but not tracked here" +
+        (untrackedView.total ? " — " + apps.length + " of " + untrackedView.total + " visible registrations." : ".")
+      : "";
   }
 
   $("#untrackedRows").addEventListener("click", function (e) {
