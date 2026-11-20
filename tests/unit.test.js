@@ -233,11 +233,30 @@ await t("a real error is not mistaken for a missing key", async () => {
 });
 
 g("coolify — restart and errors");
-await t("restart posts to the application and returns the deployment", async () => {
+await t("redeploy applies a new secret, and falls back to restart", async () => {
+  const f = httpStub([
+    [/^POST \/api\/v1\/deploy\?/, () => jsonRes({ deployments: [{ deployment_uuid: "dep-1", resource_uuid: APP }] })],
+    [/^GET \/api\/v1\/deployments\/dep-1$/, () => jsonRes({ status: "finished", deployment_uuid: "dep-1" })],
+  ]);
+  await withFetch(f, async () => {
+    assert.strictEqual(await coolify.restartApplication(APP), "dep-1");
+    assert.ok(/^POST \/api\/v1\/deploy\?uuid=/.test(f.sent[0].method + " " + f.sent[0].path) || f.sent[0].path.indexOf("/deploy?uuid=") === 0);
+    assert.strictEqual(f.sent[0].path.indexOf("force=false") >= 0, true);
+  });
+});
+await t("a cached Next.js page is not a successful health check", () => {
+  assert.strictEqual(coolify.healthAccepted(200, null), true);
+  assert.strictEqual(coolify.healthAccepted(200, "MISS"), true);
+  assert.strictEqual(coolify.healthAccepted(200, "HIT"), false);
+  assert.strictEqual(coolify.healthAccepted(503, null), false);
+});
+await t("restart posts to the application when deploy is not available", async () => {
   const f = httpStub([[/^POST .*\/restart$/, () => jsonRes({ message: "ok", deployment_uuid: "dep-9" })]]);
   await withFetch(f, async () => {
     assert.strictEqual(await coolify.restartApplication(APP), "dep-9");
-    assert.strictEqual(f.sent[0].path, "/api/v1/applications/" + APP + "/restart");
+    const restart = f.sent.filter((s) => s.path.indexOf("/restart") >= 0);
+    assert.strictEqual(restart.length, 1);
+    assert.strictEqual(restart[0].path, "/api/v1/applications/" + APP + "/restart");
   });
 });
 await t("401 is reported as a bad token", async () => {
