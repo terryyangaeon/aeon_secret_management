@@ -26,6 +26,9 @@ a { color: #1e3a5f; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .tbl-btn { background: #FFCC00; color: #1c1917; border: 0; border-radius: 8px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
 .tbl-btn:hover { background: #f0c000; }
+a.tbl-btn { display: inline-block; text-decoration: none; text-align: center; }
+.tbl-btn.navy { background: #1e3a5f; color: #fff; }
+.tbl-btn.navy:hover { background: #16304f; color: #fff; }
 .tbl-btn.ghost { background: #fff; border: 1px solid #d6d3d1; color: #44403c; font-weight: 600; }
 .tbl-btn.ghost:hover { background: #fafaf9; }
 .tbl-btn:disabled { opacity: .45; cursor: not-allowed; }

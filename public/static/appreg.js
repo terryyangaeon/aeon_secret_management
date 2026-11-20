@@ -128,14 +128,14 @@
   // "in 47 days" / "12 days ago", in both languages the rest of the UI uses.
   function fmtDays(d) {
     if (d === null || d === undefined) return "—";
-    if (d < 0) return "已過期 " + (-d) + " 天 · expired " + (-d) + "d ago";
-    if (d === 0) return "今天到期 · expires today";
-    return d + " 天 · " + d + " day" + (d === 1 ? "" : "s");
+    if (d < 0) return "expired " + (-d) + "d ago";
+    if (d === 0) return "expires today";
+    return d + " day" + (d === 1 ? "" : "s");
   }
 
   var STATUS_TEXT = {
-    ok: "正常 OK", warning: "快將到期 Soon", critical: "緊急 Urgent",
-    expired: "已過期 Expired", unknown: "未知 Unknown"
+    ok: "OK", warning: "Soon", critical: "Urgent",
+    expired: "Expired", unknown: "Unknown"
   };
   function statusPill(s, d) {
     return '<span class="st ' + esc(s) + '">' + esc(STATUS_TEXT[s] || s) + "</span>";

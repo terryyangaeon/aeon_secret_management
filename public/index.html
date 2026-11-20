@@ -206,11 +206,10 @@
         '<td class="nowrap">' + esc(AR.fmtDate(a.endsAt)) + "</td>" +
         '<td class="nowrap">' + esc(AR.fmtDays(a.daysLeft)) + "</td>" +
         "<td>" + AR.statusPill(a.status) + (a.active ? "" : ' <span class="st off">停用 Inactive</span>') + "</td>" +
-        '<td>' + (a.autoRotate ? '<span class="st on">開 On</span>' : '<span class="st off">關 Off</span>') +
-          (a.ready ? "" : ' <span class="st warning" title="No delivery target">無目標</span>') + "</td>" +
+        '<td>' + (a.autoRotate ? '<span class="st on">On</span>' : '<span class="st off">Off</span>') + "</td>" +
         '<td class="nowrap muted">' + esc(a.nextRotation ? AR.fmtDate(a.nextRotation) : "—") + "</td>" +
         '<td class="right nowrap">' + rotateBtn +
-          '<a class="tbl-btn ghost" href="/app.html?id=' + a.id + '">Details</a></td>' +
+          '<a class="tbl-btn navy" href="/app.html?id=' + a.id + '">Details</a></td>' +
         "</tr>";
     }).join("");
   }
