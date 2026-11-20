@@ -832,7 +832,13 @@
     $("#cfg").hidden = false;
     return api("GET", "/api/auth/me").then(function (d) {
       if (window.oneviewNavbarSetUser) window.oneviewNavbarSetUser(d.user);
-    }).then(loadApps);
+    }).then(loadApps).then(function () {
+      var editId = "";
+      try { editId = new URLSearchParams(location.search).get("edit") || ""; } catch (e) { editId = ""; }
+      if (!editId) return;
+      var match = apps.filter(function (x) { return String(x.id) === String(editId); })[0];
+      if (match) openApp(match);
+    });
   }).catch(AR.handleErr);
 })();
 </script>

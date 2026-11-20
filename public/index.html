@@ -12,7 +12,7 @@
 <style>
   .appname { font-weight: 700; color: #1c1917; }
   .appname a { color: inherit; text-decoration: none; }
-  .appname a:hover { text-decoration: underline; }
+  .appname a:hover { color: #2563eb; text-decoration: underline; }
   .sub { font-size: 11.5px; color: #a8a29e; margin-top: 2px; }
   .cfglink { font-size: 12px; }
   html:not(.in-iframe) .iframe-only { display: none; }
@@ -199,7 +199,7 @@
           (a.ready ? "" : "No delivery target configured") + '">' + (a.busy ? "Updating…" : "Update Now") + "</button> "
         : "";
       return '<tr class="' + (a.active ? "" : "inactive") + '">' +
-        '<td><div class="appname"><a href="/app.html?id=' + a.id + '">' + esc(a.name) + "</a></div>" +
+        '<td><div class="appname"><a href="/config.html?edit=' + encodeURIComponent(a.id) + '">' + esc(a.name) + "</a></div>" +
           '<div class="sub mono">' + esc(a.clientId || a.entraObjectId) + "</div></td>" +
         "<td>" + (cur ? esc(cur.displayName || "(unnamed)") + (cur.hint ? ' <span class="muted mono">' + esc(cur.hint) + "…</span>" : "")
                       : '<span class="muted">—</span>') + "</td>" +
