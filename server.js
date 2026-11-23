@@ -33,6 +33,7 @@ const sso = require("./lib/sso");
 const graph = require("./lib/graph");
 const graphapp = require("./lib/graphapp");
 const coolify = require("./lib/coolify");
+const supabase = require("./lib/supabase");
 const mailer = require("./lib/mailer");
 const inventory = require("./lib/inventory");
 const rotate = require("./lib/rotate");
@@ -423,7 +424,9 @@ app.post("/api/config/targets/:tid/test", requireConfig, wrap(async (req, res) =
   try {
     const t = await regdb.getTarget(idOf(req.params.tid));
     if (!t) throw Object.assign(new Error("No such target."), { status: 404 });
-    const v = await coolify.getVariable(t.coolify_connection_id, t.app_uuid, t.var_name);
+    const v = t.kind === "supabase"
+      ? await supabase.getVariable(t.supabase_connection_id, t.var_name)
+      : await coolify.getVariable(t.coolify_connection_id, t.app_uuid, t.var_name);
     let health = null;
     if (t.health_url) {
       health = await fetch(t.health_url, { redirect: "follow", signal: AbortSignal.timeout(10000) })
@@ -500,6 +503,51 @@ app.get("/api/config/coolify/variables", requireConfig, wrap(async (req, res) =>
     if (!id) throw Object.assign(new Error("connection query parameter is required."), { status: 400 });
     const r = await coolify.listVariables(id, String(req.query.app || ""));
     res.json({ keys: Object.keys(r.vars).sort(), readable: r.values });
+  } catch (e) { fail(res, e); }
+}));
+
+// ---- Supabase connections ---------------------------------------------------
+
+app.get("/api/config/supabase", requireConfig, wrap(async (_req, res) => {
+  const connections = await supabase.listConnectionsPublic();
+  res.json({ configured: await supabase.configured(), connections });
+}));
+app.post("/api/config/supabase/connections", requireConfig, wrap(async (req, res) => {
+  try {
+    const b = req.body || {};
+    const row = await regdb.createSupabaseConnection(b);
+    await regdb.audit(req.user.email, "supabase.connection.create", b.name || "", { id: row.id, endpointUrl: row.endpoint_url });
+    res.json({ connection: regdb.supabaseConnectionPublic(Object.assign(row, { target_count: 0 })) });
+  } catch (e) { fail(res, e); }
+}));
+app.put("/api/config/supabase/connections/:id", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.params.id);
+    const row = await regdb.updateSupabaseConnection(id, req.body || {});
+    const listed = (await regdb.listSupabaseConnections()).find((x) => x.id === id);
+    await regdb.audit(req.user.email, "supabase.connection.update", row.name, { id });
+    res.json({ connection: regdb.supabaseConnectionPublic(listed || row) });
+  } catch (e) { fail(res, e); }
+}));
+app.delete("/api/config/supabase/connections/:id", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.params.id);
+    const row = await regdb.getSupabaseConnection(id);
+    await regdb.deleteSupabaseConnection(id);
+    await regdb.audit(req.user.email, "supabase.connection.delete", row ? row.name : String(id), { id });
+    res.json({ ok: true });
+  } catch (e) { fail(res, e); }
+}));
+app.get("/api/config/supabase/connections/:id/test", requireConfig, wrap(async (req, res) => {
+  try { res.json(await supabase.test(idOf(req.params.id))); } catch (e) { fail(res, e); }
+}));
+// Secret NAMES only — values (and digests) are never sent to the browser.
+app.get("/api/config/supabase/variables", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.query.connection || req.query.connectionId || "");
+    if (!id) throw Object.assign(new Error("connection query parameter is required."), { status: 400 });
+    const r = await supabase.listSecrets(id);
+    res.json({ keys: r.names, readable: false });
   } catch (e) { fail(res, e); }
 }));
 

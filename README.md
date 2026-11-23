@@ -212,6 +212,20 @@ Coolify → **Keys & Tokens → API Tokens**. The token needs:
 Paste it into Configuration → Coolify connection, then **Test connection**. API access must be
 enabled under Settings → Advanced.
 
+## Supabase connection
+
+Configuration → **Supabase connection**. Each connection is one project:
+
+| Field | What to enter |
+|---|---|
+| Name | Any label, for example the project name |
+| Endpoint URL | The project URL `https://<project-ref>.supabase.co`, or `https://api.supabase.com/v1/projects/<project-ref>` |
+| API token | A personal access token from Supabase → Account → Access Tokens, with permission to read and write project secrets |
+
+The token is stored encrypted and is not shown again. **Test connection** checks the project and counts secret names. Supabase does not return the current secret (only a digest), so a rotation snapshots the copy this app already stored.
+
+On **Delivery targets**, set the line's source to Supabase, pick that connection, and choose the secret name. The list is loaded from the project. Coolify lines are unchanged.
+
 ## First run, in order
 
 1. Sign in as the bootstrap admin, add the real admins in Account Management.

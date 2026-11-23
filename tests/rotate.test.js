@@ -21,6 +21,7 @@ const appdb = require("../lib/appdb");
 const regdb = require("../lib/regdb");
 const graphapp = require("../lib/graphapp");
 const coolify = require("../lib/coolify");
+const supabase = require("../lib/supabase");
 const mailer = require("../lib/mailer");
 const rotate = require("../lib/rotate");
 
@@ -39,6 +40,7 @@ const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString();
 const fake = {
   secrets: [],          // [{keyId, endsAt, displayName}]
   vars: {},             // Coolify application variables
+  supa: {},             // Supabase project secrets
   restarts: 0,
   mails: [],
   healthOk: true,
@@ -75,6 +77,18 @@ function installStubs() {
   };
   coolify.restartApplication = async () => { fake.restarts++; return "dep-test"; };
 
+  supabase.connectionReady = async () => true;
+  supabase.getVariable = async (_id, name) => ({
+    exists: Object.prototype.hasOwnProperty.call(fake.supa, name),
+    value: null,
+    readable: false,
+  });
+  supabase.setVariable = async (_id, name, value) => {
+    if (fake.failWriteOn === name) throw new Error("Supabase write refused (test)");
+    fake.supa[name] = value;
+    return { mode: "upsert", key: name };
+  };
+
   mailer.send = async (subject, html) => { fake.mails.push({ subject, html }); return true; };
   mailer.getConfig = async () => ({ sender: "a@b.com", recipients: ["c@d.com"], thresholds: [30], onRotation: true });
   mailer.enabled = async () => true;
@@ -83,6 +97,7 @@ function installStubs() {
 function resetFake() {
   fake.secrets = [{ keyId: "key-old", endsAt: new Date(Date.now() + 10 * 864e5).toISOString(), displayName: "original" }];
   fake.vars = { DATABASE_URL: "postgres://keep-me", SSO_CLIENT_SECRET: "OLD-VALUE" };
+  fake.supa = { GOTRUE_EXTERNAL_AZURE_SECRET: "OLD-VALUE" };
   fake.restarts = 0;
   fake.mails = [];
   fake.healthOk = true;
@@ -221,6 +236,28 @@ async function addTarget(appId, varName, order) {
     assert.strictEqual(fake.vars.SSO_CLIENT_SECRET, "OLD-VALUE", "the first target was restored");
     assert.strictEqual(fake.vars.OTHER_SECRET, "OTHER-OLD", "the second was never written");
     assert.strictEqual((await regdb.listRuns({ appId: a.id }))[0].status, "rolled_back");
+  });
+
+  await t("a Supabase target is updated without restarting Coolify", async () => {
+    resetFake();
+    const a = await freshApp();
+    const sid = (await regdb.createSupabaseConnection({
+      name: "ITQPOMS",
+      endpointUrl: "https://abcdefghijklmnopqrst.supabase.co",
+      token: "test-token",
+    })).id;
+    await regdb.createTarget(a.id, {
+      kind: "supabase", supabaseConnectionId: sid, label: "ITQPOMS", appName: "ITQPOMS",
+      varName: "GOTRUE_EXTERNAL_AZURE_SECRET", healthUrl: healthUrl,
+    });
+    const before = fake.restarts;
+    const r = await rotate.rotateApp(await regdb.getApp(a.id), "manual", "t");
+    assert.strictEqual(fake.supa.GOTRUE_EXTERNAL_AZURE_SECRET, "VALUE-" + r.keyId);
+    assert.strictEqual(fake.vars.SSO_CLIENT_SECRET, "OLD-VALUE", "Coolify variables are left alone");
+    assert.strictEqual(fake.restarts, before);
+    const steps = (await regdb.listRuns({ appId: a.id }))[0].steps.map((s) => s.step);
+    assert.ok(steps.includes("supabase.setVariable"), steps.join(","));
+    assert.ok(!steps.includes("coolify.setVariable") && !steps.includes("coolify.restart"), steps.join(","));
   });
 
   await t("an app with no delivery target fails before touching Entra", async () => {

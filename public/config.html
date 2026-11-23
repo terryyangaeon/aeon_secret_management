@@ -26,6 +26,7 @@
       <button class="side-item on" data-view="apps">應用程式 Applications</button>
       <button class="side-item" data-view="targets">傳送位置 Delivery targets</button>
       <button class="side-item" data-view="coolify">Coolify 連線 Connection</button>
+      <button class="side-item" data-view="supabase">Supabase 連線 Connection</button>
       <button class="side-item" data-view="alerts">電郵提醒 Alerts</button>
       <button class="side-item" data-view="audit">稽核記錄 Audit log</button>
     </nav>
@@ -58,8 +59,8 @@
         <!-- Targets -->
         <section id="view-targets" hidden>
           <h1 class="sect">傳送位置 Delivery targets</h1>
-          <p class="hint" style="margin-top:-6px">更新後的新密碼會寫入這些 Coolify 環境變數。同一個密碼可以對應多個網址，例如正式與開發。
-            · After a rotation the new secret is written into these Coolify environment variables. One secret can cover more than one URL, for example production and dev.</p>
+          <p class="hint" style="margin-top:-6px">更新後的新密碼會寫入所選的 Coolify 或 Supabase 環境變數。同一個密碼可以對應多個目的地。
+            · After a rotation the new secret is written into the Coolify or Supabase environment variables you pick. One secret can cover more than one destination.</p>
           <div class="pick">
             <select id="tgtApp"></select>
             <button class="btn primary" id="addTgtBtn" disabled>+ 加入目標 Add target</button>
@@ -84,6 +85,21 @@
             <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
             <dl class="kv" id="cProbe"></dl>
             <p class="hint" id="cNote"></p>
+          </div>
+        </section>
+
+        <!-- Supabase -->
+        <section id="view-supabase" hidden>
+          <h1 class="sect">Supabase 連線 Connections</h1>
+          <p class="hint" style="margin-top:-6px">Each named connection is one Supabase project. Delivery targets pick a connection and load that project's secrets.
+            · 每個連線代表一個 Supabase 專案;傳送位置會依所選連線載入該專案的環境變數。</p>
+          <div class="hint" style="margin:0 0 8px">How to get the token: Supabase account → Access Tokens. It needs permission to read and write project secrets (secrets:read and secrets:write).</div>
+          <div id="sConnList" class="supabase-conn-list"></div>
+          <button type="button" class="btn ghost" id="sAddConn">+ Add connection</button>
+          <div class="panel" id="sResult" hidden style="margin-top:16px">
+            <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
+            <dl class="kv" id="sProbe"></dl>
+            <p class="hint" id="sNote"></p>
           </div>
         </section>
 
@@ -183,10 +199,11 @@
   <!-- Delivery targets for one secret: one line per Coolify application. -->
   <div class="modal-overlay" id="tgtModal" hidden><div class="modal-box targets">
     <div class="modal-title" id="tmTitle">傳送位置 Delivery targets</div>
-    <p class="hint" style="margin-top:0">每一行是一個 Coolify 應用程式、它的環境變數，以及健康檢查網址。按儲存才會寫入。
-      · Each line is one Coolify application, its environment variable, and a health check URL. Nothing is written until you save.</p>
+    <p class="hint" style="margin-top:0">每一行是一個 Coolify 應用程式，或一個 Supabase 專案的環境變數。按儲存才會寫入。
+      · Each line is one Coolify application, or one variable on a Supabase project. Nothing is written until you save.</p>
     <div class="tgt-head">
-      <span>Coolify 連線 Connection</span>
+      <span>來源 Source</span>
+      <span>連線 Connection</span>
       <span>Coolify 應用程式 Application</span>
       <span>環境變數 Variable</span>
       <span>健康檢查 Health check URL</span>
@@ -194,7 +211,7 @@
       <span></span>
     </div>
     <div id="tmLines"></div>
-    <button type="button" class="btn ghost" id="tmAddLine">+ 加入應用程式 Add application</button>
+    <button type="button" class="btn ghost" id="tmAddLine">+ 加入目標 Add target</button>
     <div class="hint" id="tmHint">健康檢查留空時，第一行會用這個密碼的 App URL。 · If the health check is blank, the first line uses this secret's App URL.</div>
     <div class="modal-acts">
       <span style="flex:1"></span>
@@ -214,14 +231,15 @@
 
   // ---- View switching ----
   var TITLES = { apps: "應用程式 Applications", targets: "傳送位置 Delivery targets",
-                 coolify: "Coolify 連線", alerts: "電郵提醒 Alerts", audit: "稽核記錄 Audit log" };
+                 coolify: "Coolify 連線", supabase: "Supabase 連線", alerts: "電郵提醒 Alerts", audit: "稽核記錄 Audit log" };
   $$(".side-item").forEach(function (b) {
     b.addEventListener("click", function () {
       var v = b.getAttribute("data-view");
       $$(".side-item").forEach(function (x) { x.classList.toggle("on", x === b); });
-      ["apps", "targets", "coolify", "alerts", "audit"].forEach(function (k) { $("#view-" + k).hidden = k !== v; });
+      ["apps", "targets", "coolify", "supabase", "alerts", "audit"].forEach(function (k) { $("#view-" + k).hidden = k !== v; });
       document.title = TITLES[v] + " — 設定 Configuration";
       if (v === "coolify") loadCoolify();
+      if (v === "supabase") loadSupabase();
       if (v === "alerts") loadAlerts();
       if (v === "audit") loadAudit();
       if (v === "targets") loadTargets();
@@ -491,7 +509,7 @@
   });
 
   // ---- Targets ----
-  var coolifyAppsByConn = {}, coolifyConnections = [], removedTargetIds = [];
+  var coolifyAppsByConn = {}, coolifyConnections = [], supabaseConnections = [], removedTargetIds = [];
   function fillTargetApps() {
     var sel = $("#tgtApp");
     var keep = sel.value;
@@ -510,8 +528,11 @@
     if (!tgtAppId) { $("#tgtRows").innerHTML = '<tr><td colspan="7" class="muted">請先選擇應用程式。 · Choose an application.</td></tr>'; return Promise.resolve(); }
     return api("GET", "/api/config/apps/" + tgtAppId + "/targets").then(function (d) {
       $("#tgtRows").innerHTML = (d.targets || []).map(function (t) {
-        return "<tr><td>" + esc(t.coolify_connection_name || t.coolifyConnectionName || "—") + "</td><td>" + esc(t.label || "—") + "</td>" +
-          "<td>" + esc(t.app_name || "—") + "</td>" +
+        var supa = t.kind === "supabase";
+        var conn = supa ? (t.supabase_connection_name || "Supabase") : (t.coolify_connection_name || t.coolifyConnectionName || "—");
+        var service = supa ? "Supabase" : (t.app_name || "—");
+        return "<tr><td>" + esc(conn) + "</td><td>" + esc(t.label || "—") + "</td>" +
+          "<td>" + esc(service) + "</td>" +
           '<td class="mono">' + esc(t.var_name) + "</td>" +
           "<td>" + (t.restart ? "Yes" : "No") + "</td>" +
           "<td>" + (t.health_url ? esc(t.health_url) : '<span class="muted">—</span>') + "</td>" +
@@ -527,10 +548,17 @@
   });
   $("#addTgtBtn").addEventListener("click", function () { openTargets(); });
 
-  function coolifyConnItems() {
-    return coolifyConnections.map(function (c) {
-      return { id: String(c.id), name: c.name, sub: c.baseUrl || "" };
+  function connItemsForRow(row) {
+    var kind = row.querySelector(".tm-kind").value;
+    var list = kind === "supabase" ? supabaseConnections : coolifyConnections;
+    return list.map(function (c) {
+      return { id: String(c.id), name: c.name, sub: kind === "supabase" ? (c.endpointUrl || "") : (c.baseUrl || "") };
     });
+  }
+  function connectionName(kind, id) {
+    var list = kind === "supabase" ? supabaseConnections : coolifyConnections;
+    var hit = list.filter(function (c) { return String(c.id) === String(id); })[0];
+    return hit ? hit.name : "";
   }
   function coolifyItemsForRow(row) {
     var cid = row.querySelector(".tm-conn-id").value;
@@ -548,60 +576,98 @@
     });
   }
   var varListSeq = 1;
+  function paintVarOptions(dl, keys) {
+    dl.innerHTML = (keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
+  }
+  function applyLineKind(row, kind) {
+    var supa = kind === "supabase";
+    var app = row.querySelector(".tm-app");
+    var restart = row.querySelector(".tm-restart");
+    app.disabled = supa;
+    app.placeholder = supa ? "Not used for Supabase" : "Search applications";
+    if (supa) {
+      app.value = "";
+      row.querySelector(".tm-app-id").value = "";
+      restart.checked = false;
+    }
+    restart.disabled = supa;
+  }
   function addLine(t) {
     var n = varListSeq++;
     var row = document.createElement("div");
     row.className = "tgt-line";
     if (t && t.id) row.setAttribute("data-id", String(t.id));
-    var connId = t ? String(t.coolify_connection_id || t.coolifyConnectionId || "") : "";
-    var connName = "";
-    if (connId) {
-      var mc = coolifyConnections.filter(function (c) { return String(c.id) === connId; })[0];
-      connName = mc ? mc.name : "";
+    var kind = t && t.kind === "supabase" ? "supabase" : "coolify";
+    var connId = "";
+    if (t) {
+      connId = kind === "supabase"
+        ? String(t.supabase_connection_id || t.supabaseConnectionId || "")
+        : String(t.coolify_connection_id || t.coolifyConnectionId || "");
     }
+    var connName = connId ? connectionName(kind, connId) : "";
     row.innerHTML =
-      '<div class="tgt-cell" data-label="Coolify 連線 Connection"><div class="combo">' +
+      '<div class="tgt-cell" data-label="來源 Source">' +
+        '<select class="tm-kind">' +
+          '<option value="coolify"' + (kind === "coolify" ? " selected" : "") + ">Coolify</option>" +
+          '<option value="supabase"' + (kind === "supabase" ? " selected" : "") + ">Supabase</option>" +
+        "</select></div>" +
+      '<div class="tgt-cell" data-label="連線 Connection"><div class="combo">' +
         '<input type="text" class="tm-conn" placeholder="Search connections" autocomplete="off" spellcheck="false" value="' + esc(connName) + '">' +
         '<input type="hidden" class="tm-conn-id" value="' + esc(connId) + '">' +
         '<div class="combo-list" hidden></div></div></div>' +
       '<div class="tgt-cell" data-label="Coolify 應用程式 Application"><div class="combo">' +
-        '<input type="text" class="tm-app" placeholder="Search applications" autocomplete="off" spellcheck="false" value="' + esc(t ? (t.app_name || "") : "") + '">' +
-        '<input type="hidden" class="tm-app-id" value="' + esc(t ? (t.app_uuid || "") : "") + '">' +
+        '<input type="text" class="tm-app" placeholder="Search applications" autocomplete="off" spellcheck="false" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_name || "") : "")) + '">' +
+        '<input type="hidden" class="tm-app-id" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_uuid || "") : "")) + '">' +
         '<div class="combo-list" hidden></div></div></div>' +
       '<div class="tgt-cell" data-label="環境變數 Variable">' +
         '<input type="text" class="tm-var" placeholder="SSO_CLIENT_SECRET" list="tmVars' + n + '" value="' + esc(t ? (t.var_name || "") : "") + '">' +
         '<datalist id="tmVars' + n + '"></datalist></div>' +
       '<div class="tgt-cell" data-label="健康檢查 Health check URL">' +
         '<input type="text" class="tm-health" placeholder="https://…/api/health" value="' + esc(t ? (t.health_url || "") : "") + '"></div>' +
-      '<label class="chk tgt-cell" data-label="重啟 Restart"><input type="checkbox" class="tm-restart"' + ((!t || t.restart) ? " checked" : "") + "></label>" +
+      '<label class="chk tgt-cell" data-label="重啟 Restart"><input type="checkbox" class="tm-restart"' + (kind === "supabase" ? "" : ((!t || t.restart) ? " checked" : "")) + "></label>" +
       '<div class="tgt-acts tgt-cell" data-label="">' +
         '<button type="button" class="tbl-btn ghost tm-test"' + (t && t.id ? "" : " hidden") + ">Test</button>" +
         '<button type="button" class="btn ghost tm-remove" title="Remove">✕</button></div>';
     $("#tmLines").appendChild(row);
+    applyLineKind(row, kind);
     var connInput = row.querySelector(".tm-conn");
     var connHidden = row.querySelector(".tm-conn-id");
     var appInput = row.querySelector(".tm-app");
     var appHidden = row.querySelector(".tm-app-id");
+    row.querySelector(".tm-kind").addEventListener("change", function () {
+      connInput.value = "";
+      connHidden.value = "";
+      appInput.value = "";
+      appHidden.value = "";
+      row.querySelector("datalist").innerHTML = "";
+      applyLineKind(row, this.value);
+    });
     combo({
       input: connInput, list: connInput.closest(".combo").querySelector(".combo-list"), hidden: connHidden,
-      items: coolifyConnItems,
+      items: function () { return connItemsForRow(row); },
       onPick: function (it) {
         appHidden.value = "";
         appInput.value = "";
         row.querySelector("datalist").innerHTML = "";
-        ensureConnApps(it.id).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+        if (row.querySelector(".tm-kind").value === "supabase") {
+          loadSupabaseVarNames(it.id, row.querySelector("datalist"));
+        } else {
+          ensureConnApps(it.id).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+        }
       }
     });
     combo({
       input: appInput, list: appInput.closest(".combo").querySelector(".combo-list"), hidden: appHidden,
       items: function () { return coolifyItemsForRow(row); },
       onPick: function (it) {
+        if (row.querySelector(".tm-kind").value === "supabase") return;
         var health = row.querySelector(".tm-health");
         if (it.fqdn) health.placeholder = String(it.fqdn).replace(/\/$/, "") + "/api/health";
         loadVarNames(connHidden.value, it.id, row.querySelector("datalist"));
       }
     });
-    if (connId) {
+    if (connId && kind === "supabase") loadSupabaseVarNames(connId, row.querySelector("datalist"));
+    else if (connId) {
       ensureConnApps(connId).then(function () {
         if (t && t.app_uuid) loadVarNames(connId, t.app_uuid, row.querySelector("datalist"));
       }).catch(function () {});
@@ -611,10 +677,26 @@
     if (!connId || !uuid) { dl.innerHTML = ""; return Promise.resolve(); }
     return api("GET", "/api/config/coolify/variables?connection=" + encodeURIComponent(connId) +
       "&app=" + encodeURIComponent(uuid)).then(function (d) {
-      dl.innerHTML = (d.keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
+      paintVarOptions(dl, d.keys);
       if (!d.readable) $("#tmHint").textContent =
         "Coolify did not return variable values (the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
     }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+  }
+  function loadSupabaseVarNames(connId, dl) {
+    if (!connId) { dl.innerHTML = ""; return Promise.resolve(); }
+    return api("GET", "/api/config/supabase/variables?connection=" + encodeURIComponent(connId)).then(function (d) {
+      paintVarOptions(dl, d.keys);
+      $("#tmHint").textContent = "Supabase lists secret names. The current value is not returned, so rollback uses the copy stored by this app.";
+    }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+  }
+  function renderTargetLines(existing) {
+    if (!coolifyConnections.length && !supabaseConnections.length && !existing.length) {
+      $("#tmHint").textContent = "Add a Coolify or Supabase connection before configuring delivery targets.";
+    } else {
+      $("#tmHint").textContent = "If the health check is blank, the first line uses this secret's App URL.";
+    }
+    if (!existing.length) addLine(null);
+    else existing.forEach(function (t) { addLine(t); });
   }
   function openTargets() {
     if (!tgtAppId) return;
@@ -623,25 +705,20 @@
     var name = ($("#tgtApp").selectedOptions[0] && $("#tgtApp").selectedOptions[0].textContent) || "";
     $("#tmTitle").textContent = "Delivery targets — " + name;
     $("#tmLines").innerHTML = "";
-    $("#tmHint").textContent = "Loading Coolify connections…";
+    $("#tmHint").textContent = "Loading connections…";
     $("#tgtModal").hidden = false;
     var existing = (window._targets || []).slice();
-    api("GET", "/api/config/coolify").then(function (d) {
-      coolifyConnections = d.connections || [];
-      if (!coolifyConnections.length) {
-        $("#tmHint").textContent = "Add a Coolify connection under Coolify Connection before configuring delivery targets.";
-        return;
-      }
-      $("#tmHint").textContent = "If the health check is blank, the first line uses this secret's App URL.";
-      var loads = coolifyConnections.map(function (c) { return ensureConnApps(c.id); });
-      return Promise.all(loads).then(function () {
-        if (!existing.length) addLine(null);
-        else existing.forEach(function (t) { addLine(t); });
-      });
+    Promise.all([
+      api("GET", "/api/config/coolify"),
+      api("GET", "/api/config/supabase")
+    ]).then(function (pair) {
+      coolifyConnections = pair[0].connections || [];
+      supabaseConnections = pair[1].connections || [];
+      var loads = coolifyConnections.map(function (c) { return ensureConnApps(c.id).catch(function () { return []; }); });
+      return Promise.all(loads).then(function () { renderTargetLines(existing); });
     }).catch(function (e) {
-      $("#tmHint").textContent = (e && e.message) || "Could not load Coolify connections.";
-      if (!existing.length) addLine(null);
-      else existing.forEach(function (t) { addLine(t); });
+      $("#tmHint").textContent = (e && e.message) || "Could not load connections.";
+      renderTargetLines(existing);
     });
   }
   $("#tmAddLine").addEventListener("click", function () {
@@ -674,17 +751,21 @@
 
   function readLines() {
     return $$("#tmLines .tgt-line").map(function (row) {
+      var kind = row.querySelector(".tm-kind").value === "supabase" ? "supabase" : "coolify";
       var connId = row.querySelector(".tm-conn-id").value;
       var uuid = row.querySelector(".tm-app-id").value;
       var known = (coolifyAppsByConn[connId] || []).filter(function (a) { return a.uuid === uuid; })[0];
+      var connName = connectionName(kind, connId);
       return {
         id: row.getAttribute("data-id") || "",
-        coolifyConnectionId: connId,
-        appUuid: uuid,
-        appName: (known && known.name) || row.querySelector(".tm-app").value.trim(),
+        kind: kind,
+        connectionId: connId,
+        connName: connName,
+        appUuid: kind === "supabase" ? "" : uuid,
+        appName: kind === "supabase" ? connName : ((known && known.name) || row.querySelector(".tm-app").value.trim()),
         varName: row.querySelector(".tm-var").value.trim(),
         healthUrl: row.querySelector(".tm-health").value.trim(),
-        restart: row.querySelector(".tm-restart").checked,
+        restart: kind === "supabase" ? false : row.querySelector(".tm-restart").checked,
         row: row
       };
     });
@@ -696,12 +777,18 @@
     var lines = [], seen = {};
     for (var i = 0; i < raw.length; i++) {
       var L = raw[i];
-      if (!L.coolifyConnectionId && !L.appUuid && !L.appName && !L.varName && !L.healthUrl) continue;
-      if (!L.coolifyConnectionId || !L.appUuid || !L.varName) {
+      var blank = !L.connectionId && !L.appUuid && !L.appName && !L.varName && !L.healthUrl;
+      if (blank) continue;
+      if (L.kind === "supabase") {
+        if (!L.connectionId || !L.varName) {
+          return AR.msg("Complete each line",
+            "Each Supabase line needs a connection and an environment variable. The health check URL can be left blank.");
+        }
+      } else if (!L.connectionId || !L.appUuid || !L.varName) {
         return AR.msg("Complete each line",
-          "Each line needs a Coolify connection, application, and environment variable. The health check URL can be left blank.");
+          "Each Coolify line needs a connection, application, and environment variable. The health check URL can be left blank.");
       }
-      var key = L.coolifyConnectionId + "\n" + L.appUuid + "\n" + L.varName;
+      var key = L.kind + "\n" + L.connectionId + "\n" + (L.kind === "supabase" ? "" : L.appUuid) + "\n" + L.varName;
       if (seen[key]) {
         return AR.msg("Duplicate destination",
           "The same connection, application, and variable are on more than one line.");
@@ -714,8 +801,11 @@
       var chain = Promise.resolve();
       lines.forEach(function (L, i) {
         chain = chain.then(function () {
-          var body = { label: L.appName, coolifyConnectionId: parseInt(L.coolifyConnectionId, 10),
-            appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
+          var body = L.kind === "supabase"
+            ? { kind: "supabase", label: L.connName || L.varName, supabaseConnectionId: parseInt(L.connectionId, 10),
+                appName: L.connName || "Supabase", varName: L.varName, healthUrl: L.healthUrl, sortOrder: i }
+            : { kind: "coolify", label: L.appName, coolifyConnectionId: parseInt(L.connectionId, 10),
+                appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
           var req = L.id ? api("PUT", "/api/config/targets/" + L.id, body)
                          : api("POST", "/api/config/apps/" + tgtAppId + "/targets", body);
           return req.then(function (r) {
@@ -740,7 +830,7 @@
     }
     if (!lines.length && removedTargetIds.length) {
       return AR.confirm("移除全部傳送位置 Remove all delivery targets",
-        "這會刪除這個密碼的所有 Coolify 傳送位置。\n\nThis removes every Coolify destination for this secret.",
+        "這會刪除這個密碼的所有傳送位置。\n\nThis removes every destination for this secret.",
         { okText: "移除 Remove", danger: true }).then(function (ok) { if (ok) persist(); });
     }
     persist();
@@ -856,6 +946,101 @@
     $("#cNote").textContent = r.note || "";
     $("#cResult").hidden = false;
   }
+
+  // ---- Supabase ----
+  function supabaseStateText(c) {
+    if (c.hasToken) return "Token stored encrypted" + (c.targetCount ? " · used by " + c.targetCount + " delivery target(s)" : "");
+    return "Token not saved yet — paste one and Save.";
+  }
+  function renderSupabaseCard(c) {
+    var card = document.createElement("div");
+    card.className = "supabase-conn-card";
+    card.setAttribute("data-id", c._draft ? "" : String(c.id));
+    card.innerHTML =
+      '<h2>' + esc(c._draft ? "New connection" : c.name) + '</h2>' +
+      '<div class="fieldlbl" style="margin-top:0">Name</div>' +
+      '<input type="text" class="sc-name" value="' + esc(c.name || "") + '" placeholder="e.g. ITQPOMS" autocomplete="off">' +
+      '<div class="fieldlbl">Endpoint URL</div>' +
+      '<input type="text" class="sc-url" value="' + esc(c.endpointUrl || "") + '" placeholder="https://your-project-ref.supabase.co" autocomplete="off">' +
+      '<p class="hint">The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/&lt;project-ref&gt;.</p>' +
+      '<div class="fieldlbl">API token</div>' +
+      '<input type="password" class="sc-token" placeholder="Paste to replace the saved token" autocomplete="off">' +
+      '<p class="supabase-conn-meta sc-state">' + esc(supabaseStateText(c)) + "</p>" +
+      '<div class="modal-acts" style="margin-top:12px">' +
+        '<button type="button" class="btn primary sc-save">Save</button>' +
+        '<button type="button" class="btn ghost sc-test"' + (c._draft ? " disabled" : "") + ">Test connection</button>" +
+        (c._draft ? "" : '<button type="button" class="btn ghost sc-del" style="color:#b91c1c;border-color:#fecaca">Remove</button>') +
+      "</div>";
+    return card;
+  }
+  function loadSupabase() {
+    return api("GET", "/api/config/supabase").then(function (d) {
+      supabaseConnections = d.connections || [];
+      var list = $("#sConnList");
+      list.innerHTML = "";
+      supabaseConnections.forEach(function (c) { list.appendChild(renderSupabaseCard(c)); });
+    }).catch(AR.handleErr);
+  }
+  $("#sAddConn").addEventListener("click", function () {
+    $("#sConnList").appendChild(renderSupabaseCard({ _draft: true, name: "", endpointUrl: "", hasToken: false, targetCount: 0 }));
+  });
+  $("#sConnList").addEventListener("click", function (e) {
+    var card = e.target.closest(".supabase-conn-card");
+    if (!card) return;
+    var id = card.getAttribute("data-id");
+    if (e.target.closest(".sc-save")) {
+      var name = card.querySelector(".sc-name").value.trim();
+      var url = card.querySelector(".sc-url").value.trim();
+      var token = card.querySelector(".sc-token").value.trim();
+      if (!name || !url) return AR.msg("Enter name and endpoint URL", "Use the project URL, for example https://your-project-ref.supabase.co");
+      var req = id
+        ? api("PUT", "/api/config/supabase/connections/" + id, { name: name, endpointUrl: url, token: token || undefined })
+        : api("POST", "/api/config/supabase/connections", { name: name, endpointUrl: url, token: token });
+      if (!id && !token) return AR.msg("Enter a token", "Paste the Supabase access token the first time you save a new connection.");
+      card.querySelector(".sc-save").disabled = true;
+      req.then(function () {
+        card.querySelector(".sc-token").value = "";
+        AR.toast("Saved");
+        return loadSupabase();
+      }).catch(AR.handleErr).then(function () {
+        var b = card.querySelector(".sc-save");
+        if (b) b.disabled = false;
+      });
+      return;
+    }
+    if (e.target.closest(".sc-test")) {
+      if (!id) return;
+      e.target.closest(".sc-test").disabled = true;
+      $("#sResult").hidden = true;
+      api("GET", "/api/config/supabase/connections/" + id + "/test").then(function (r) {
+        $("#sProbe").innerHTML = [
+          ["Endpoint", r.endpoint || "—"],
+          ["Project", r.projectRef || "—"],
+          ["Secrets visible", String(r.secrets)],
+          ["Can read values", "No — Supabase returns a digest, not the secret"],
+          ["Overall", r.ok ? "Ready to update secrets" : "Not usable"]
+        ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
+        $("#sNote").textContent = r.note || "";
+        $("#sResult").hidden = false;
+      }).catch(AR.handleErr).then(function () {
+        var b = card.querySelector(".sc-test");
+        if (b) b.disabled = false;
+      });
+      return;
+    }
+    if (e.target.closest(".sc-del")) {
+      if (!id) { card.remove(); return; }
+      AR.confirm("Remove connection",
+        "This deletes the saved endpoint and token for this Supabase project. Delivery targets must be moved first.",
+        { okText: "Remove", danger: true }).then(function (ok) {
+          if (!ok) return;
+          return api("DELETE", "/api/config/supabase/connections/" + id).then(function () {
+            AR.toast("Removed");
+            return loadSupabase();
+          }).catch(AR.handleErr);
+        });
+    }
+  });
 
   // ---- Alerts ----
   function loadAlerts() {

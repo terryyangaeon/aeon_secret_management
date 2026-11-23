@@ -316,6 +316,92 @@ await t("a failure on one host does not change requests already sent to another"
   }
 });
 
+g("supabase — project secrets");
+const supabase = require("../lib/supabase");
+const PROJECT = "abcdefghijklmnopqrst";
+await t("a project URL and a management URL identify the same secrets endpoint", () => {
+  const a = supabase.resolveEndpoint("https://" + PROJECT + ".supabase.co/");
+  const b = supabase.resolveEndpoint("https://api.supabase.com/v1/projects/" + PROJECT);
+  assert.strictEqual(a.ref, PROJECT);
+  assert.strictEqual(a.secretsUrl, "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets");
+  assert.strictEqual(b.secretsUrl, a.secretsUrl);
+  assert.throws(() => supabase.resolveEndpoint("https://api.supabase.com"), /identify one project/);
+  const stripped = supabase.resolveEndpoint("https://user:secret-value@" + PROJECT + ".supabase.co/?apikey=secret-value");
+  assert.strictEqual(stripped.endpoint, "https://" + PROJECT + ".supabase.co");
+  assert.ok(!stripped.endpoint.includes("secret-value") && !stripped.secretsUrl.includes("secret-value"));
+});
+await t("listing secrets keeps names and drops digests", async () => {
+  supabase.setTestConnectionResolver(() => ({
+    id: 7, endpoint: "https://" + PROJECT + ".supabase.co", ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    token: "sbp-test", name: "ITQPOMS",
+  }));
+  const digest = "a".repeat(64);
+  const f = httpStub([[/^GET \/v1\/projects\/.+\/secrets$/, () => jsonRes([
+    { name: "GOTRUE_EXTERNAL_AZURE_SECRET", value: digest },
+    { name: "OTHER", value: digest },
+  ])]]);
+  try {
+    await withFetch(f, async () => {
+      const listed = await supabase.listSecrets(7);
+      assert.deepStrictEqual(listed.names, ["GOTRUE_EXTERNAL_AZURE_SECRET", "OTHER"]);
+      assert.strictEqual(listed.readable, false);
+      const one = await supabase.getVariable(7, "GOTRUE_EXTERNAL_AZURE_SECRET");
+      assert.strictEqual(one.exists, true);
+      assert.strictEqual(one.value, null);
+      assert.strictEqual(one.readable, false);
+      assert.strictEqual(f.sent[0].headers.Authorization, "Bearer sbp-test");
+      const probe = await supabase.test(7);
+      assert.strictEqual(probe.ok, true);
+      assert.strictEqual(probe.secrets, 2);
+      assert.strictEqual(probe.projectRef, PROJECT);
+      assert.ok(!JSON.stringify(probe).includes(digest), "the digest must not leave the client");
+      assert.ok(!JSON.stringify(probe).includes("sbp-test"), "the token must not leave the client");
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+await t("updating one secret posts only that name and value", async () => {
+  supabase.setTestConnectionResolver((id) => ({
+    id: id, endpoint: "https://" + PROJECT + ".supabase.co", ref: id === 2 ? "bbbbbbbbbbbbbbbbbbbb" : PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + (id === 2 ? "bbbbbbbbbbbbbbbbbbbb" : PROJECT) + "/secrets",
+    token: "token-" + id, name: "p",
+  }));
+  const f = httpStub([[/^POST \/v1\/projects\/.+\/secrets$/, () => jsonRes({}, 201)]]);
+  try {
+    await withFetch(f, async () => {
+      const r = await supabase.setVariable(1, "GOTRUE_EXTERNAL_AZURE_SECRET", "NEWVAL");
+      assert.strictEqual(r.mode, "upsert");
+      assert.deepStrictEqual(f.sent[0].body, [{ name: "GOTRUE_EXTERNAL_AZURE_SECRET", value: "NEWVAL" }]);
+      assert.strictEqual(f.sent[0].headers.Authorization, "Bearer token-1");
+      await assert.rejects(() => supabase.setVariable(1, "SUPABASE_URL", "x"), /SUPABASE_/);
+      assert.strictEqual(f.sent.length, 1, "a reserved name is refused before the request");
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+await t("a rejected Supabase token is reported without the token", async () => {
+  supabase.setTestConnectionResolver(() => ({
+    id: 1, endpoint: "https://" + PROJECT + ".supabase.co", ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    token: "sbp-secret", name: "p",
+  }));
+  const f = httpStub([[/^GET \/v1\/projects\/.+\/secrets$/, () => jsonRes({ message: "unauthorized" }, 401)]]);
+  try {
+    await withFetch(f, async () => {
+      await assert.rejects(() => supabase.listSecrets(1), (e) => {
+        assert.match(e.message, /rejected the API token/);
+        assert.ok(!e.message.includes("sbp-secret"));
+        return true;
+      });
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+
 g("regdb — Coolify URL");
 await t("normCoolifyUrl adds https and strips a trailing /api/v1", () => {
   assert.strictEqual(regdb.normCoolifyUrl("coolify-kvm.aeondelightasia.online"), "https://coolify-kvm.aeondelightasia.online");
