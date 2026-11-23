@@ -423,7 +423,7 @@ app.post("/api/config/targets/:tid/test", requireConfig, wrap(async (req, res) =
   try {
     const t = await regdb.getTarget(idOf(req.params.tid));
     if (!t) throw Object.assign(new Error("No such target."), { status: 404 });
-    const v = await coolify.getVariable(t.app_uuid, t.var_name);
+    const v = await coolify.getVariable(t.coolify_connection_id, t.app_uuid, t.var_name);
     let health = null;
     if (t.health_url) {
       health = await fetch(t.health_url, { redirect: "follow", signal: AbortSignal.timeout(10000) })
@@ -433,32 +433,72 @@ app.post("/api/config/targets/:tid/test", requireConfig, wrap(async (req, res) =
   } catch (e) { fail(res, e); }
 }));
 
-// ---- Coolify connection ---------------------------------------------------
+// ---- Coolify connections ----------------------------------------------------
 
 app.get("/api/config/coolify", requireConfig, wrap(async (_req, res) => {
-  const c = await coolify.getConfig();
-  res.json({ configured: await coolify.configured(), fromEnv: !!c.fromEnv, baseUrl: c.baseUrl });
+  const connections = await coolify.listConnectionsPublic();
+  res.json({ configured: await coolify.configured(), connections });
 }));
+app.post("/api/config/coolify/connections", requireConfig, wrap(async (req, res) => {
+  try {
+    const b = req.body || {};
+    const row = await regdb.createCoolifyConnection(b);
+    await regdb.audit(req.user.email, "coolify.connection.create", b.name || "", { id: row.id, baseUrl: row.base_url });
+    res.json({ connection: regdb.connectionPublic(Object.assign(row, { target_count: 0 })) });
+  } catch (e) { fail(res, e); }
+}));
+app.put("/api/config/coolify/connections/:id", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.params.id);
+    const row = await regdb.updateCoolifyConnection(id, req.body || {});
+    const listed = (await regdb.listCoolifyConnections()).find((x) => x.id === id);
+    await regdb.audit(req.user.email, "coolify.connection.update", row.name, { id });
+    res.json({ connection: regdb.connectionPublic(listed || row) });
+  } catch (e) { fail(res, e); }
+}));
+app.delete("/api/config/coolify/connections/:id", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.params.id);
+    const row = await regdb.getCoolifyConnection(id);
+    await regdb.deleteCoolifyConnection(id);
+    await regdb.audit(req.user.email, "coolify.connection.delete", row ? row.name : String(id), { id });
+    res.json({ ok: true });
+  } catch (e) { fail(res, e); }
+}));
+app.get("/api/config/coolify/connections/:id/test", requireConfig, wrap(async (req, res) => {
+  try { res.json(await coolify.test(idOf(req.params.id))); } catch (e) { fail(res, e); }
+}));
+// Legacy single-form save — updates the first connection or creates Primary.
 app.post("/api/config/coolify", requireConfig, wrap(async (req, res) => {
   try {
-    const c = await coolify.getConfig();
-    if (c.fromEnv) throw new Error("The connection comes from the COOLIFY_URL / COOLIFY_API_TOKEN environment variables — change it there.");
     const b = req.body || {};
     await coolify.setConfig(b.baseUrl, b.token);
     await regdb.audit(req.user.email, "coolify.connect", String(b.baseUrl || ""), {});
     res.json({ ok: true });
   } catch (e) { fail(res, e); }
 }));
-app.get("/api/config/coolify/test", requireConfig, wrap(async (_req, res) => {
-  try { res.json(await coolify.test()); } catch (e) { fail(res, e); }
+app.get("/api/config/coolify/test", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = req.query.connection ? idOf(req.query.connection) : null;
+    if (id) return res.json(await coolify.test(id));
+    const rows = await regdb.listCoolifyConnections();
+    if (!rows.length) throw Object.assign(new Error("No Coolify connection configured."), { status: 400 });
+    res.json(await coolify.test(rows[0].id));
+  } catch (e) { fail(res, e); }
 }));
-app.get("/api/config/coolify/applications", requireConfig, wrap(async (_req, res) => {
-  try { res.json({ applications: await coolify.listApplications() }); } catch (e) { fail(res, e); }
+app.get("/api/config/coolify/applications", requireConfig, wrap(async (req, res) => {
+  try {
+    const id = idOf(req.query.connection || req.query.connectionId || "");
+    if (!id) throw Object.assign(new Error("connection query parameter is required."), { status: 400 });
+    res.json({ applications: await coolify.listApplications(id) });
+  } catch (e) { fail(res, e); }
 }));
 // Variable NAMES only — values are never sent to the browser here.
 app.get("/api/config/coolify/variables", requireConfig, wrap(async (req, res) => {
   try {
-    const r = await coolify.listVariables(String(req.query.app || ""));
+    const id = idOf(req.query.connection || req.query.connectionId || "");
+    if (!id) throw Object.assign(new Error("connection query parameter is required."), { status: 400 });
+    const r = await coolify.listVariables(id, String(req.query.app || ""));
     res.json({ keys: Object.keys(r.vars).sort(), readable: r.values });
   } catch (e) { fail(res, e); }
 }));

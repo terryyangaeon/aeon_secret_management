@@ -66,7 +66,7 @@
           </div>
           <div class="tablewrap">
             <table>
-              <thead><tr><th>標籤 Label</th><th>服務 Service</th><th>變數 Variable</th><th>重啟 Restart</th><th>健康檢查 Health check</th><th class="right">　</th></tr></thead>
+              <thead><tr><th>連線 Connection</th><th>標籤 Label</th><th>服務 Service</th><th>變數 Variable</th><th>重啟 Restart</th><th>健康檢查 Health check</th><th class="right">　</th></tr></thead>
               <tbody id="tgtRows"></tbody>
             </table>
           </div>
@@ -74,20 +74,13 @@
 
         <!-- Coolify -->
         <section id="view-coolify" hidden>
-          <h1 class="sect">Coolify 連線 Connection</h1>
-          <div class="panel">
-            <div class="fieldlbl" style="margin-top:0">Coolify 網址 Server URL</div>
-            <input type="text" id="cUrl" placeholder="https://coolify-kvm.aeondelightasia.online" autocomplete="off">
-            <div class="fieldlbl">API token</div>
-            <div class="hint" style="margin:0 0 4px">How to get the token:<br>Coolify → Keys &amp; Tokens → API Tokens → Check read:sensitive、write、deploy permission.</div>
-            <input type="text" id="cToken" placeholder="貼上新的權杖以取代現有的 · paste a new token to replace the saved one" autocomplete="off">
-            <div class="hint" id="cState">…</div>
-            <div class="modal-acts">
-              <button class="btn primary" id="cSave">儲存 Save</button>
-              <button class="btn ghost" id="cTest">測試連線 Test connection</button>
-            </div>
-          </div>
-          <div class="panel" id="cResult" hidden>
+          <h1 class="sect">Coolify 連線 Connections</h1>
+          <p class="hint" style="margin-top:-6px">Each named connection is a separate Coolify server (for example kvm and main). Delivery targets pick which connection supplies their application list.
+            · 每個連線代表一台獨立的 Coolify 伺服器;傳送位置會依所選連線載入應用程式清單。</p>
+          <div class="hint" style="margin:0 0 8px">How to get the token: Coolify → Keys &amp; Tokens → API Tokens → Check read:sensitive、write、deploy permission.</div>
+          <div id="cConnList" class="coolify-conn-list"></div>
+          <button type="button" class="btn ghost" id="cAddConn">+ Add connection</button>
+          <div class="panel" id="cResult" hidden style="margin-top:16px">
             <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
             <dl class="kv" id="cProbe"></dl>
             <p class="hint" id="cNote"></p>
@@ -193,6 +186,7 @@
     <p class="hint" style="margin-top:0">每一行是一個 Coolify 應用程式、它的環境變數，以及健康檢查網址。按儲存才會寫入。
       · Each line is one Coolify application, its environment variable, and a health check URL. Nothing is written until you save.</p>
     <div class="tgt-head">
+      <span>Coolify 連線 Connection</span>
       <span>Coolify 應用程式 Application</span>
       <span>環境變數 Variable</span>
       <span>健康檢查 Health check URL</span>
@@ -497,7 +491,7 @@
   });
 
   // ---- Targets ----
-  var coolifyApps = [], removedTargetIds = [];
+  var coolifyAppsByConn = {}, coolifyConnections = [], removedTargetIds = [];
   function fillTargetApps() {
     var sel = $("#tgtApp");
     var keep = sel.value;
@@ -513,16 +507,16 @@
   });
 
   function loadTargets() {
-    if (!tgtAppId) { $("#tgtRows").innerHTML = '<tr><td colspan="6" class="muted">請先選擇應用程式。 · Choose an application.</td></tr>'; return Promise.resolve(); }
+    if (!tgtAppId) { $("#tgtRows").innerHTML = '<tr><td colspan="7" class="muted">請先選擇應用程式。 · Choose an application.</td></tr>'; return Promise.resolve(); }
     return api("GET", "/api/config/apps/" + tgtAppId + "/targets").then(function (d) {
       $("#tgtRows").innerHTML = (d.targets || []).map(function (t) {
-        return "<tr><td>" + esc(t.label || "—") + "</td>" +
+        return "<tr><td>" + esc(t.coolify_connection_name || t.coolifyConnectionName || "—") + "</td><td>" + esc(t.label || "—") + "</td>" +
           "<td>" + esc(t.app_name || "—") + "</td>" +
           '<td class="mono">' + esc(t.var_name) + "</td>" +
-          "<td>" + (t.restart ? "是 Yes" : "否 No") + "</td>" +
+          "<td>" + (t.restart ? "Yes" : "No") + "</td>" +
           "<td>" + (t.health_url ? esc(t.health_url) : '<span class="muted">—</span>') + "</td>" +
-          '<td class="right"><button class="tbl-btn t-edit" data-id="' + t.id + '">編輯 Edit</button></td></tr>';
-      }).join("") || '<tr><td colspan="6" class="muted">未設定。 · None configured.</td></tr>';
+          '<td class="right"><button class="tbl-btn t-edit" data-id="' + t.id + '">Edit</button></td></tr>';
+      }).join("") || '<tr><td colspan="7" class="muted">None configured.</td></tr>';
       window._targets = d.targets || [];
     }).catch(AR.handleErr);
   }
@@ -533,10 +527,24 @@
   });
   $("#addTgtBtn").addEventListener("click", function () { openTargets(); });
 
-  function coolifyItems() {
-    return coolifyApps.map(function (a) {
+  function coolifyConnItems() {
+    return coolifyConnections.map(function (c) {
+      return { id: String(c.id), name: c.name, sub: c.baseUrl || "" };
+    });
+  }
+  function coolifyItemsForRow(row) {
+    var cid = row.querySelector(".tm-conn-id").value;
+    return (coolifyAppsByConn[cid] || []).map(function (a) {
       var host = String(a.fqdn || "").replace(/^https?:\/\//, "");
       return { id: a.uuid, name: a.name || host || a.uuid, sub: host, fqdn: a.fqdn || "" };
+    });
+  }
+  function ensureConnApps(connId) {
+    if (!connId) return Promise.resolve([]);
+    if (coolifyAppsByConn[connId]) return Promise.resolve(coolifyAppsByConn[connId]);
+    return api("GET", "/api/config/coolify/applications?connection=" + encodeURIComponent(connId)).then(function (d) {
+      coolifyAppsByConn[connId] = d.applications || [];
+      return coolifyAppsByConn[connId];
     });
   }
   var varListSeq = 1;
@@ -545,9 +553,19 @@
     var row = document.createElement("div");
     row.className = "tgt-line";
     if (t && t.id) row.setAttribute("data-id", String(t.id));
+    var connId = t ? String(t.coolify_connection_id || t.coolifyConnectionId || "") : "";
+    var connName = "";
+    if (connId) {
+      var mc = coolifyConnections.filter(function (c) { return String(c.id) === connId; })[0];
+      connName = mc ? mc.name : "";
+    }
     row.innerHTML =
+      '<div class="tgt-cell" data-label="Coolify 連線 Connection"><div class="combo">' +
+        '<input type="text" class="tm-conn" placeholder="Search connections" autocomplete="off" spellcheck="false" value="' + esc(connName) + '">' +
+        '<input type="hidden" class="tm-conn-id" value="' + esc(connId) + '">' +
+        '<div class="combo-list" hidden></div></div></div>' +
       '<div class="tgt-cell" data-label="Coolify 應用程式 Application"><div class="combo">' +
-        '<input type="text" class="tm-app" placeholder="搜尋應用程式 · Search" autocomplete="off" spellcheck="false" value="' + esc(t ? (t.app_name || "") : "") + '">' +
+        '<input type="text" class="tm-app" placeholder="Search applications" autocomplete="off" spellcheck="false" value="' + esc(t ? (t.app_name || "") : "") + '">' +
         '<input type="hidden" class="tm-app-id" value="' + esc(t ? (t.app_uuid || "") : "") + '">' +
         '<div class="combo-list" hidden></div></div></div>' +
       '<div class="tgt-cell" data-label="環境變數 Variable">' +
@@ -557,47 +575,71 @@
         '<input type="text" class="tm-health" placeholder="https://…/api/health" value="' + esc(t ? (t.health_url || "") : "") + '"></div>' +
       '<label class="chk tgt-cell" data-label="重啟 Restart"><input type="checkbox" class="tm-restart"' + ((!t || t.restart) ? " checked" : "") + "></label>" +
       '<div class="tgt-acts tgt-cell" data-label="">' +
-        '<button type="button" class="tbl-btn ghost tm-test"' + (t && t.id ? "" : " hidden") + ">測試 Test</button>" +
-        '<button type="button" class="btn ghost tm-remove" title="移除 Remove">✕</button></div>';
+        '<button type="button" class="tbl-btn ghost tm-test"' + (t && t.id ? "" : " hidden") + ">Test</button>" +
+        '<button type="button" class="btn ghost tm-remove" title="Remove">✕</button></div>';
     $("#tmLines").appendChild(row);
-    var input = row.querySelector(".tm-app");
-    var hidden = row.querySelector(".tm-app-id");
+    var connInput = row.querySelector(".tm-conn");
+    var connHidden = row.querySelector(".tm-conn-id");
+    var appInput = row.querySelector(".tm-app");
+    var appHidden = row.querySelector(".tm-app-id");
     combo({
-      input: input, list: row.querySelector(".combo-list"), hidden: hidden,
-      items: coolifyItems,
+      input: connInput, list: connInput.closest(".combo").querySelector(".combo-list"), hidden: connHidden,
+      items: coolifyConnItems,
+      onPick: function (it) {
+        appHidden.value = "";
+        appInput.value = "";
+        row.querySelector("datalist").innerHTML = "";
+        ensureConnApps(it.id).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
+      }
+    });
+    combo({
+      input: appInput, list: appInput.closest(".combo").querySelector(".combo-list"), hidden: appHidden,
+      items: function () { return coolifyItemsForRow(row); },
       onPick: function (it) {
         var health = row.querySelector(".tm-health");
         if (it.fqdn) health.placeholder = String(it.fqdn).replace(/\/$/, "") + "/api/health";
-        loadVarNames(it.id, row.querySelector("datalist"));
+        loadVarNames(connHidden.value, it.id, row.querySelector("datalist"));
       }
     });
-    if (t && t.app_uuid) loadVarNames(t.app_uuid, row.querySelector("datalist"));
+    if (connId) {
+      ensureConnApps(connId).then(function () {
+        if (t && t.app_uuid) loadVarNames(connId, t.app_uuid, row.querySelector("datalist"));
+      }).catch(function () {});
+    }
   }
-  function loadVarNames(uuid, dl) {
-    if (!uuid) { dl.innerHTML = ""; return Promise.resolve(); }
-    return api("GET", "/api/config/coolify/variables?app=" + encodeURIComponent(uuid)).then(function (d) {
+  function loadVarNames(connId, uuid, dl) {
+    if (!connId || !uuid) { dl.innerHTML = ""; return Promise.resolve(); }
+    return api("GET", "/api/config/coolify/variables?connection=" + encodeURIComponent(connId) +
+      "&app=" + encodeURIComponent(uuid)).then(function (d) {
       dl.innerHTML = (d.keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
       if (!d.readable) $("#tmHint").textContent =
-        "Coolify 沒有回傳變數內容(權杖缺少 read:sensitive),更新前無法備份舊值。 · Coolify did not return variable values " +
-        "(the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
+        "Coolify did not return variable values (the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
     }).catch(function (err) { $("#tmHint").textContent = (err && err.message) || ""; });
   }
   function openTargets() {
     if (!tgtAppId) return;
     removedTargetIds = [];
+    coolifyAppsByConn = {};
     var name = ($("#tgtApp").selectedOptions[0] && $("#tgtApp").selectedOptions[0].textContent) || "";
-    $("#tmTitle").textContent = "傳送位置 Delivery targets — " + name;
+    $("#tmTitle").textContent = "Delivery targets — " + name;
     $("#tmLines").innerHTML = "";
-    $("#tmHint").textContent = "載入 Coolify 應用程式… · Loading Coolify applications…";
+    $("#tmHint").textContent = "Loading Coolify connections…";
     $("#tgtModal").hidden = false;
     var existing = (window._targets || []).slice();
-    api("GET", "/api/config/coolify/applications").then(function (d) {
-      coolifyApps = d.applications || [];
-      $("#tmHint").textContent = "健康檢查留空時，第一行會用這個密碼的 App URL。 · If the health check is blank, the first line uses this secret's App URL.";
-      if (!existing.length) addLine(null);
-      else existing.forEach(function (t) { addLine(t); });
+    api("GET", "/api/config/coolify").then(function (d) {
+      coolifyConnections = d.connections || [];
+      if (!coolifyConnections.length) {
+        $("#tmHint").textContent = "Add a Coolify connection under Coolify Connection before configuring delivery targets.";
+        return;
+      }
+      $("#tmHint").textContent = "If the health check is blank, the first line uses this secret's App URL.";
+      var loads = coolifyConnections.map(function (c) { return ensureConnApps(c.id); });
+      return Promise.all(loads).then(function () {
+        if (!existing.length) addLine(null);
+        else existing.forEach(function (t) { addLine(t); });
+      });
     }).catch(function (e) {
-      $("#tmHint").textContent = (e && e.message) || "Could not read Coolify applications.";
+      $("#tmHint").textContent = (e && e.message) || "Could not load Coolify connections.";
       if (!existing.length) addLine(null);
       else existing.forEach(function (t) { addLine(t); });
     });
@@ -632,10 +674,12 @@
 
   function readLines() {
     return $$("#tmLines .tgt-line").map(function (row) {
+      var connId = row.querySelector(".tm-conn-id").value;
       var uuid = row.querySelector(".tm-app-id").value;
-      var known = coolifyApps.filter(function (a) { return a.uuid === uuid; })[0];
+      var known = (coolifyAppsByConn[connId] || []).filter(function (a) { return a.uuid === uuid; })[0];
       return {
         id: row.getAttribute("data-id") || "",
+        coolifyConnectionId: connId,
         appUuid: uuid,
         appName: (known && known.name) || row.querySelector(".tm-app").value.trim(),
         varName: row.querySelector(".tm-var").value.trim(),
@@ -652,15 +696,15 @@
     var lines = [], seen = {};
     for (var i = 0; i < raw.length; i++) {
       var L = raw[i];
-      if (!L.appUuid && !L.appName && !L.varName && !L.healthUrl) continue;
-      if (!L.appUuid || !L.varName) {
-        return AR.msg("請填寫每一行 · Complete each line",
-          "每一行都需要一個 Coolify 應用程式和環境變數。健康檢查網址可以留空。 · Each line needs a Coolify application and an environment variable. The health check URL can be left blank.");
+      if (!L.coolifyConnectionId && !L.appUuid && !L.appName && !L.varName && !L.healthUrl) continue;
+      if (!L.coolifyConnectionId || !L.appUuid || !L.varName) {
+        return AR.msg("Complete each line",
+          "Each line needs a Coolify connection, application, and environment variable. The health check URL can be left blank.");
       }
-      var key = L.appUuid + "\n" + L.varName;
+      var key = L.coolifyConnectionId + "\n" + L.appUuid + "\n" + L.varName;
       if (seen[key]) {
-        return AR.msg("重複的傳送位置 · Duplicate destination",
-          "同一個 Coolify 應用程式不能有兩行相同的環境變數。 · The same Coolify application and variable are on more than one line.");
+        return AR.msg("Duplicate destination",
+          "The same connection, application, and variable are on more than one line.");
       }
       seen[key] = 1;
       lines.push(L);
@@ -670,7 +714,8 @@
       var chain = Promise.resolve();
       lines.forEach(function (L, i) {
         chain = chain.then(function () {
-          var body = { label: L.appName, appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
+          var body = { label: L.appName, coolifyConnectionId: parseInt(L.coolifyConnectionId, 10),
+            appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
           var req = L.id ? api("PUT", "/api/config/targets/" + L.id, body)
                          : api("POST", "/api/config/apps/" + tgtAppId + "/targets", body);
           return req.then(function (r) {
@@ -702,47 +747,115 @@
   });
 
   // ---- Coolify ----
+  var lastCoolifyTestId = null;
+
+  function connStateText(c) {
+    if (c.fromEnv) return "Supplied by COOLIFY_URL / COOLIFY_API_TOKEN environment variables.";
+    if (c.hasToken) return "Token stored encrypted" + (c.targetCount ? " · used by " + c.targetCount + " delivery target(s)" : "");
+    return "Token not saved yet — paste one and Save.";
+  }
+
+  function renderCoolifyCard(c) {
+    var card = document.createElement("div");
+    card.className = "coolify-conn-card";
+    card.setAttribute("data-id", c._draft ? "" : String(c.id));
+    card.innerHTML =
+      '<h2>' + esc(c._draft ? "New connection" : c.name) + '</h2>' +
+      '<div class="fieldlbl" style="margin-top:0">Name</div>' +
+      '<input type="text" class="cc-name" value="' + esc(c.name || "") + '" placeholder="e.g. Coolify kvm" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
+      '<div class="fieldlbl">Server URL</div>' +
+      '<input type="text" class="cc-url" value="' + esc(c.baseUrl || "") + '" placeholder="https://coolify-kvm.aeondelightasia.online" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
+      '<div class="fieldlbl">API token</div>' +
+      '<input type="password" class="cc-token" placeholder="Paste to replace the saved token" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
+      '<p class="coolify-conn-meta cc-state">' + esc(connStateText(c)) + "</p>" +
+      '<div class="modal-acts" style="margin-top:12px">' +
+        (c.fromEnv ? "" : '<button type="button" class="btn primary cc-save">Save</button>') +
+        '<button type="button" class="btn ghost cc-test"' + (c._draft ? " disabled" : "") + ">Test connection</button>" +
+        (c._draft || c.fromEnv ? "" : '<button type="button" class="btn ghost cc-del" style="color:#b91c1c;border-color:#fecaca">Remove</button>') +
+      "</div>";
+    return card;
+  }
+
   function loadCoolify() {
     return api("GET", "/api/config/coolify").then(function (d) {
-      $("#cUrl").value = d.baseUrl || "";
-      $("#cState").textContent = d.configured
-        ? (d.fromEnv ? "已由 COOLIFY_URL / COOLIFY_API_TOKEN 環境變數提供。 · Supplied by the COOLIFY_URL / COOLIFY_API_TOKEN environment variables."
-                     : "已儲存連線(權杖已加密)。 · Connected; the token is stored encrypted.")
-        : "未設定。 · Not configured.";
-      $("#cUrl").disabled = !!d.fromEnv;
-      $("#cToken").disabled = !!d.fromEnv;
-      $("#cSave").disabled = !!d.fromEnv;
+      coolifyConnections = d.connections || [];
+      var list = $("#cConnList");
+      list.innerHTML = "";
+      coolifyConnections.forEach(function (c) { list.appendChild(renderCoolifyCard(c)); });
     }).catch(AR.handleErr);
   }
-  $("#cSave").addEventListener("click", function () {
-    var u = $("#cUrl").value.trim(), t = $("#cToken").value.trim();
-    if (!u) return AR.msg("請輸入網址 · Enter the server URL", "例如 https://coolify-kvm.aeondelightasia.online");
-    if (!t) return AR.msg("請輸入權杖 · Enter a token", "貼上 Coolify API token。 · Paste the Coolify API token.");
-    $("#cSave").disabled = true;
-    api("POST", "/api/config/coolify", { baseUrl: u, token: t }).then(function () {
-      $("#cToken").value = ""; AR.toast("已儲存 · Saved"); return loadCoolify();
-    }).catch(AR.handleErr).then(function () { $("#cSave").disabled = false; });
+
+  $("#cAddConn").addEventListener("click", function () {
+    $("#cConnList").appendChild(renderCoolifyCard({ _draft: true, name: "", baseUrl: "", hasToken: false, targetCount: 0 }));
   });
-  $("#cTest").addEventListener("click", function () {
-    $("#cTest").disabled = true;
-    $("#cResult").hidden = true;
-    api("GET", "/api/config/coolify/test").then(function (r) {
-      $("#cProbe").innerHTML = [
-        ["伺服器 Server", r.baseUrl || "—"],
-        ["團隊 Team", r.team || "(not returned)"],
-        ["可見應用程式 Applications visible", String(r.applications)],
-        ["可讀回舊值 Can read values",
-          r.canReadValues === null ? "— (nothing to check against)"
-            : r.canReadValues ? "✓ 是 yes" : "✕ 否 no — rollback would be limited"],
-        ["整體 Overall",
-          r.ok && r.canReadValues !== false ? "✓ 可用於自動更新 · ready for auto-rotation"
-            : r.ok ? "！ 可連線,但未能讀回舊值 · connected, but values are not readable"
-            : "✕ 未能自動更新 · not usable for auto-rotation"]
-      ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
-      $("#cNote").textContent = r.note || "";
-      $("#cResult").hidden = false;
-    }).catch(AR.handleErr).then(function () { $("#cTest").disabled = false; });
+
+  $("#cConnList").addEventListener("click", function (e) {
+    var card = e.target.closest(".coolify-conn-card");
+    if (!card) return;
+    var id = card.getAttribute("data-id");
+    if (e.target.closest(".cc-save")) {
+      var name = card.querySelector(".cc-name").value.trim();
+      var url = card.querySelector(".cc-url").value.trim();
+      var token = card.querySelector(".cc-token").value.trim();
+      if (!name || !url) return AR.msg("Enter name and server URL", "");
+      var req = id
+        ? api("PUT", "/api/config/coolify/connections/" + id, { name: name, baseUrl: url, token: token || undefined })
+        : api("POST", "/api/config/coolify/connections", { name: name, baseUrl: url, token: token });
+      if (!id && !token) return AR.msg("Enter a token", "Paste the Coolify API token the first time you save a new connection.");
+      card.querySelector(".cc-save").disabled = true;
+      req.then(function () {
+        card.querySelector(".cc-token").value = "";
+        AR.toast("Saved");
+        return loadCoolify();
+      }).catch(AR.handleErr).then(function () {
+        var b = card.querySelector(".cc-save");
+        if (b) b.disabled = false;
+      });
+      return;
+    }
+    if (e.target.closest(".cc-test")) {
+      if (!id) return;
+      lastCoolifyTestId = id;
+      e.target.closest(".cc-test").disabled = true;
+      $("#cResult").hidden = true;
+      api("GET", "/api/config/coolify/connections/" + id + "/test").then(function (r) {
+        showCoolifyTest(r);
+      }).catch(AR.handleErr).then(function () {
+        var b = card.querySelector(".cc-test");
+        if (b) b.disabled = false;
+      });
+      return;
+    }
+    if (e.target.closest(".cc-del")) {
+      if (!id) { card.remove(); return; }
+      AR.confirm("Remove connection",
+        "This deletes the saved URL and token for this Coolify server. Delivery targets must be moved first.",
+        { okText: "Remove", danger: true }).then(function (ok) {
+          if (!ok) return;
+          return api("DELETE", "/api/config/coolify/connections/" + id).then(function () {
+            AR.toast("Removed");
+            return loadCoolify();
+          }).catch(AR.handleErr);
+        });
+    }
   });
+
+  function showCoolifyTest(r) {
+    $("#cProbe").innerHTML = [
+      ["Server", r.baseUrl || "—"],
+      ["Team", r.team || "(not returned)"],
+      ["Applications visible", String(r.applications)],
+      ["Can read values",
+        r.canReadValues === null ? "—"
+          : r.canReadValues ? "Yes" : "No — rollback would be limited"],
+      ["Overall",
+        r.ok && r.canReadValues !== false ? "Ready for auto-rotation"
+          : r.ok ? "Connected, but values are not readable"
+          : "Not usable for auto-rotation"]
+    ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
+    $("#cNote").textContent = r.note || "";
+    $("#cResult").hidden = false;
+  }
 
   // ---- Alerts ----
   function loadAlerts() {

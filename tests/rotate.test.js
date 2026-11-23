@@ -64,10 +64,11 @@ function installStubs() {
   });
 
   coolify.configured = async () => true;
-  coolify.getVariable = async (_uuid, name) => ({
+  coolify.connectionReady = async () => true;
+  coolify.getVariable = async (_conn, _uuid, name) => ({
     exists: name in fake.vars, value: fake.vars[name] === undefined ? null : fake.vars[name], readable: name in fake.vars,
   });
-  coolify.setVariable = async (_uuid, name, value) => {
+  coolify.setVariable = async (_conn, _uuid, name, value) => {
     if (fake.failWriteOn === name) throw new Error("Coolify write refused (test)");
     fake.vars[name] = value;
     return { mode: "patch", key: name };
@@ -115,9 +116,20 @@ async function freshApp(opts) {
   await regdb.syncCredentials(a.id, live.credentials);
   return a;
 }
+let coolifyConnId = null;
+async function ensureCoolifyConn() {
+  if (coolifyConnId) return coolifyConnId;
+  const rows = await regdb.listCoolifyConnections();
+  if (rows.length) { coolifyConnId = rows[0].id; return coolifyConnId; }
+  coolifyConnId = (await regdb.createCoolifyConnection({
+    name: "Test Coolify", baseUrl: "https://coolify.test", token: "test-token",
+  })).id;
+  return coolifyConnId;
+}
 async function addTarget(appId, varName, order) {
+  const cid = await ensureCoolifyConn();
   return regdb.createTarget(appId, {
-    label: varName, appUuid: "coolify-app-1", appName: "Svc", varName, restart: true,
+    label: varName, coolifyConnectionId: cid, appUuid: "coolify-app-1", appName: "Svc", varName, restart: true,
     healthUrl: order ? "" : healthUrl, sortOrder: order || 0,
   });
 }

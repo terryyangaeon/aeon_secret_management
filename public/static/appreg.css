@@ -107,14 +107,18 @@ input:disabled, select:disabled { background: #f5f5f4; color: #a8a29e; cursor: n
 
 /* Several Coolify destinations on one secret, one line each. */
 .tgt-head, .tgt-line {
-  display: grid; grid-template-columns: minmax(180px, 1.35fr) minmax(150px, 1fr) minmax(200px, 1.45fr) 88px auto;
+  display: grid; grid-template-columns: minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(140px, 1fr) minmax(170px, 1.2fr) 88px auto;
   gap: 8px; align-items: center;
 }
 .tgt-head { font-size: 11px; color: #78716c; text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 6px; }
 .tgt-line { margin-bottom: 8px; }
 .tgt-line .chk { margin: 0; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .tgt-acts { display: flex; gap: 6px; justify-content: flex-end; }
-.modal-box.targets { max-width: 1040px; }
+.modal-box.targets { max-width: 1120px; }
+.coolify-conn-list { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+.coolify-conn-card { border: 1px solid #e7e5e4; border-radius: 12px; padding: 16px 18px; background: #fafaf9; }
+.coolify-conn-card h2 { font-size: 14px; font-weight: 800; color: #1c1917; margin: 0 0 10px; }
+.coolify-conn-meta { font-size: 12px; color: #78716c; margin: 6px 0 0; }
 
 /* Modals — closed only by their own buttons, never by backdrop click or Esc. */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15,12,8,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1500; }

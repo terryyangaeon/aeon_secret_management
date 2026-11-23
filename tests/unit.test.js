@@ -143,7 +143,7 @@ await t("values come back as a key→value map", async () => {
     { key: "SSO_CLIENT_SECRET", value: "OLD" },
   ])]]);
   await withFetch(f, async () => {
-    const r = await coolify.listVariables(APP);
+    const r = await coolify.listVariables(undefined, APP);
     assert.deepStrictEqual(r.vars, { DATABASE_URL: "postgres://x", SSO_CLIENT_SECRET: "OLD" });
     assert.strictEqual(r.values, true);
     assert.strictEqual(f.sent[0].headers.Authorization, "Bearer test-token");
@@ -152,15 +152,15 @@ await t("values come back as a key→value map", async () => {
 await t("real_value is used when value is absent", async () => {
   const f = httpStub([[/envs$/, () => jsonRes([{ key: "K", value: null, real_value: "resolved" }])]]);
   await withFetch(f, async () => {
-    assert.strictEqual((await coolify.listVariables(APP)).vars.K, "resolved");
+    assert.strictEqual((await coolify.listVariables(undefined, APP)).vars.K, "resolved");
   });
 });
 await t("a token without read:sensitive is reported as unreadable", async () => {
   const f = httpStub([[/envs$/, () => jsonRes([{ key: "A", value: null }, { key: "B", value: null }])]]);
   await withFetch(f, async () => {
-    const r = await coolify.listVariables(APP);
+    const r = await coolify.listVariables(undefined, APP);
     assert.strictEqual(r.values, false, "no value readable → rollback could not snapshot");
-    const v = await coolify.getVariable(APP, "A");
+    const v = await coolify.getVariable(undefined, APP, "A");
     assert.strictEqual(v.exists, true);
     assert.strictEqual(v.readable, false);
   });
@@ -177,25 +177,25 @@ await t("preview variables never leak into the production set", async () => {
     { key: "ONLY_IN_PREVIEW", value: "x", is_preview: true },
   ])]]);
   await withFetch(f, async () => {
-    const prod = await coolify.listVariables(APP);
+    const prod = await coolify.listVariables(undefined, APP);
     assert.strictEqual(prod.vars.DATABASE_URL, "postgres://production");
     assert.strictEqual(prod.vars.SSO_CLIENT_SECRET, "PROD-SECRET");
     assert.ok(!("ONLY_IN_PREVIEW" in prod.vars), "preview-only keys must not appear");
-    assert.strictEqual((await coolify.getVariable(APP, "SSO_CLIENT_SECRET")).value, "PROD-SECRET");
-    const prev = await coolify.listVariables(APP, { preview: true });
+    assert.strictEqual((await coolify.getVariable(undefined, APP, "SSO_CLIENT_SECRET")).value, "PROD-SECRET");
+    const prev = await coolify.listVariables(undefined, APP, { preview: true });
     assert.strictEqual(prev.vars.SSO_CLIENT_SECRET, "PREVIEW-SECRET", "the other set is reachable on purpose");
   });
 });
 await t("an entry with no is_preview flag counts as production", async () => {
   const f = httpStub([[/envs$/, () => jsonRes([{ key: "K", value: "v" }])]]);
   await withFetch(f, async () => {
-    assert.strictEqual((await coolify.listVariables(APP)).vars.K, "v");
+    assert.strictEqual((await coolify.listVariables(undefined, APP)).vars.K, "v");
   });
 });
 await t("a variable that does not exist yet is reported, not invented", async () => {
   const f = httpStub([[/envs$/, () => jsonRes([{ key: "OTHER", value: "x" }])]]);
   await withFetch(f, async () => {
-    const v = await coolify.getVariable(APP, "SSO_CLIENT_SECRET");
+    const v = await coolify.getVariable(undefined, APP, "SSO_CLIENT_SECRET");
     assert.strictEqual(v.exists, false);
     assert.strictEqual(v.value, null);
   });
@@ -205,7 +205,7 @@ g("coolify — writing one variable");
 await t("PATCH carries exactly that key and nothing else", async () => {
   const f = httpStub([[/^PATCH .*\/envs$/, () => jsonRes({ key: "SSO_CLIENT_SECRET" }, 201)]]);
   await withFetch(f, async () => {
-    const r = await coolify.setVariable(APP, "SSO_CLIENT_SECRET", "NEWVAL");
+    const r = await coolify.setVariable(undefined, APP, "SSO_CLIENT_SECRET", "NEWVAL");
     assert.strictEqual(r.mode, "patch");
     assert.strictEqual(f.sent.length, 1, "one request, no read-modify-write");
     assert.strictEqual(f.sent[0].method, "PATCH");
@@ -219,7 +219,7 @@ await t("a missing key falls back from PATCH to POST", async () => {
     [/^POST .*\/envs$/, () => jsonRes({ uuid: "env-uuid" }, 201)],
   ]);
   await withFetch(f, async () => {
-    const r = await coolify.setVariable(APP, "NEW_KEY", "V");
+    const r = await coolify.setVariable(undefined, APP, "NEW_KEY", "V");
     assert.strictEqual(r.mode, "create");
     assert.deepStrictEqual(f.sent.map((x) => x.method), ["PATCH", "POST"]);
   });
@@ -227,7 +227,7 @@ await t("a missing key falls back from PATCH to POST", async () => {
 await t("a real error is not mistaken for a missing key", async () => {
   const f = httpStub([[/^PATCH .*\/envs$/, () => jsonRes({ message: "boom" }, 500)]]);
   await withFetch(f, async () => {
-    await assert.rejects(() => coolify.setVariable(APP, "K", "V"), /boom/);
+    await assert.rejects(() => coolify.setVariable(undefined, APP, "K", "V"), /boom/);
     assert.strictEqual(f.sent.length, 1, "must not POST after a 500");
   });
 });
@@ -236,18 +236,18 @@ g("coolify — restart and errors");
 await t("restart posts to the application and returns the deployment", async () => {
   const f = httpStub([[/^POST .*\/restart$/, () => jsonRes({ message: "ok", deployment_uuid: "dep-9" })]]);
   await withFetch(f, async () => {
-    assert.strictEqual(await coolify.restartApplication(APP), "dep-9");
+    assert.strictEqual(await coolify.restartApplication(undefined, APP), "dep-9");
     assert.strictEqual(f.sent[0].path, "/api/v1/applications/" + APP + "/restart");
   });
 });
 await t("401 is reported as a bad token", async () => {
   await withFetch(httpStub([[/./, () => jsonRes({}, 401)]]), async () => {
-    await assert.rejects(() => coolify.listApplications(), /rejected the API token/);
+    await assert.rejects(() => coolify.listApplications(undefined), /rejected the API token/);
   });
 });
 await t("403 names the permissions the token needs", async () => {
   await withFetch(httpStub([[/./, () => jsonRes({}, 403)]]), async () => {
-    await assert.rejects(() => coolify.listApplications(), /read:sensitive, write and deploy/);
+    await assert.rejects(() => coolify.listApplications(undefined), /read:sensitive, write and deploy/);
   });
 });
 await t("429 is retried once, honouring Retry-After", async () => {
@@ -258,9 +258,68 @@ await t("429 is retried once, honouring Retry-After", async () => {
     return jsonRes([]);
   };
   await withFetch(f, async () => {
-    assert.deepStrictEqual(await coolify.listApplications(), []);
+    assert.deepStrictEqual(await coolify.listApplications(undefined), []);
     assert.strictEqual(n, 2, "one retry");
   });
+});
+
+g("coolify — multiple connections");
+const SHARED_UUID = "same-uuid-on-two-hosts";
+await t("the same application uuid on two hosts uses the right token and base URL", async () => {
+  coolify.setTestConnectionResolver((id) => ({
+    1: { id: 1, baseUrl: "https://coolify-kvm.aeondelightasia.online", token: "token-kvm", fromEnv: false },
+    2: { id: 2, baseUrl: "https://coolify.aeondelightasia.online", token: "token-main", fromEnv: false },
+  }[id]));
+  const f = httpStub([[/^PATCH .*\/envs$/, (req) => {
+    if (req.url.indexOf("coolify-kvm") >= 0) {
+      assert.strictEqual(req.headers.Authorization, "Bearer token-kvm");
+    } else {
+      assert.strictEqual(req.headers.Authorization, "Bearer token-main");
+    }
+    return jsonRes({ key: "SSO_CLIENT_SECRET" }, 201);
+  }]]);
+  try {
+    await withFetch(f, async () => {
+      await coolify.setVariable(1, SHARED_UUID, "SSO_CLIENT_SECRET", "KVM-VAL");
+      await coolify.setVariable(2, SHARED_UUID, "SSO_CLIENT_SECRET", "MAIN-VAL");
+      assert.strictEqual(f.sent.length, 2);
+      assert.ok(f.sent[0].url.indexOf("coolify-kvm") >= 0);
+      assert.ok(f.sent[1].url.indexOf("coolify.aeondelightasia.online") >= 0);
+      assert.strictEqual(f.sent[0].body.value, "KVM-VAL");
+      assert.strictEqual(f.sent[1].body.value, "MAIN-VAL");
+    });
+  } finally {
+    coolify.setTestConnectionResolver(null);
+  }
+});
+await t("a failure on one host does not change requests already sent to another", async () => {
+  coolify.setTestConnectionResolver((id) => ({
+    1: { id: 1, baseUrl: "https://host-a.test", token: "a", fromEnv: false },
+    2: { id: 2, baseUrl: "https://host-b.test", token: "b", fromEnv: false },
+  }[id]));
+  const f = httpStub([
+    [/^PATCH .*\/envs$/, (req) => {
+      if (req.url.indexOf("host-a") >= 0) return jsonRes({ key: "K" }, 201);
+      return jsonRes({ message: "boom" }, 500);
+    }],
+  ]);
+  try {
+    await withFetch(f, async () => {
+      await coolify.setVariable(1, APP, "K", "ok-a");
+      await assert.rejects(() => coolify.setVariable(2, APP, "K", "fail-b"), /boom/);
+      assert.strictEqual(f.sent.length, 2);
+      assert.ok(/^https:\/\/host-a\.test/.test(f.sent[0].url));
+      assert.ok(/^https:\/\/host-b\.test/.test(f.sent[1].url));
+    });
+  } finally {
+    coolify.setTestConnectionResolver(null);
+  }
+});
+
+g("regdb — Coolify URL");
+await t("normCoolifyUrl adds https and strips a trailing /api/v1", () => {
+  assert.strictEqual(regdb.normCoolifyUrl("coolify-kvm.aeondelightasia.online"), "https://coolify-kvm.aeondelightasia.online");
+  assert.strictEqual(regdb.normCoolifyUrl("https://x/api/v1/"), "https://x");
 });
 
 g("coolify — applications");
@@ -270,7 +329,7 @@ await t("applications are listed with their first domain", async () => {
     { uuid: "u1", name: "Alpha", fqdn: "https://a.example", status: "running" },
   ])]]);
   await withFetch(f, async () => {
-    const apps = await coolify.listApplications();
+    const apps = await coolify.listApplications(undefined);
     assert.deepStrictEqual(apps.map((a) => a.name), ["Alpha", "Zed"], "sorted by name");
     assert.strictEqual(apps[1].fqdn, "https://z.example", "only the first domain");
   });
