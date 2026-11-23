@@ -44,6 +44,8 @@ table.untracked { table-layout: fixed; }
 table.untracked .reg { width: 20%; overflow-wrap: anywhere; }
 .right { text-align: right; }
 .nowrap { white-space: nowrap; }
+.token-mask { display: inline-flex; align-items: center; gap: 8px; }
+.token-mask code { font-size: 12px; letter-spacing: .03em; }
 
 /* Pills */
 .st { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }

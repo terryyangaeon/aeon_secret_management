@@ -447,7 +447,7 @@ app.post("/api/config/coolify/connections", requireConfig, wrap(async (req, res)
     const b = req.body || {};
     const row = await regdb.createCoolifyConnection(b);
     await regdb.audit(req.user.email, "coolify.connection.create", b.name || "", { id: row.id, baseUrl: row.base_url });
-    res.json({ connection: regdb.connectionPublic(Object.assign(row, { target_count: 0 })) });
+    res.json({ connection: await regdb.coolifyConnectionView(Object.assign(row, { target_count: 0 })) });
   } catch (e) { fail(res, e); }
 }));
 app.put("/api/config/coolify/connections/:id", requireConfig, wrap(async (req, res) => {
@@ -456,7 +456,7 @@ app.put("/api/config/coolify/connections/:id", requireConfig, wrap(async (req, r
     const row = await regdb.updateCoolifyConnection(id, req.body || {});
     const listed = (await regdb.listCoolifyConnections()).find((x) => x.id === id);
     await regdb.audit(req.user.email, "coolify.connection.update", row.name, { id });
-    res.json({ connection: regdb.connectionPublic(listed || row) });
+    res.json({ connection: await regdb.coolifyConnectionView(listed || row) });
   } catch (e) { fail(res, e); }
 }));
 app.delete("/api/config/coolify/connections/:id", requireConfig, wrap(async (req, res) => {
@@ -470,6 +470,17 @@ app.delete("/api/config/coolify/connections/:id", requireConfig, wrap(async (req
 }));
 app.get("/api/config/coolify/connections/:id/test", requireConfig, wrap(async (req, res) => {
   try { res.json(await coolify.test(idOf(req.params.id))); } catch (e) { fail(res, e); }
+}));
+// Full token for one connection, admin only. The list API returns the first
+// three characters. This response is the only place the rest is sent, and the
+// audit entry records the copy without the token.
+app.get("/api/config/coolify/connections/:id/token", requireConfig, wrap(async (req, res) => {
+  const id = idOf(req.params.id);
+  const row = await regdb.getCoolifyConnection(id);
+  if (!row) throw Object.assign(new Error("No such Coolify connection."), { status: 404 });
+  const token = await regdb.readCoolifyToken(row);
+  await regdb.audit(req.user.email, "coolify.connection.token.copy", row.name, { id });
+  res.json({ token });
 }));
 // Legacy single-form save — updates the first connection or creates Primary.
 app.post("/api/config/coolify", requireConfig, wrap(async (req, res) => {
@@ -517,7 +528,7 @@ app.post("/api/config/supabase/connections", requireConfig, wrap(async (req, res
     const b = req.body || {};
     const row = await regdb.createSupabaseConnection(b);
     await regdb.audit(req.user.email, "supabase.connection.create", b.name || "", { id: row.id, endpointUrl: row.endpoint_url });
-    res.json({ connection: regdb.supabaseConnectionPublic(Object.assign(row, { target_count: 0 })) });
+    res.json({ connection: await regdb.supabaseConnectionView(Object.assign(row, { target_count: 0 })) });
   } catch (e) { fail(res, e); }
 }));
 app.put("/api/config/supabase/connections/:id", requireConfig, wrap(async (req, res) => {
@@ -526,7 +537,7 @@ app.put("/api/config/supabase/connections/:id", requireConfig, wrap(async (req, 
     const row = await regdb.updateSupabaseConnection(id, req.body || {});
     const listed = (await regdb.listSupabaseConnections()).find((x) => x.id === id);
     await regdb.audit(req.user.email, "supabase.connection.update", row.name, { id });
-    res.json({ connection: regdb.supabaseConnectionPublic(listed || row) });
+    res.json({ connection: await regdb.supabaseConnectionView(listed || row) });
   } catch (e) { fail(res, e); }
 }));
 app.delete("/api/config/supabase/connections/:id", requireConfig, wrap(async (req, res) => {
@@ -540,6 +551,14 @@ app.delete("/api/config/supabase/connections/:id", requireConfig, wrap(async (re
 }));
 app.get("/api/config/supabase/connections/:id/test", requireConfig, wrap(async (req, res) => {
   try { res.json(await supabase.test(idOf(req.params.id))); } catch (e) { fail(res, e); }
+}));
+app.get("/api/config/supabase/connections/:id/token", requireConfig, wrap(async (req, res) => {
+  const id = idOf(req.params.id);
+  const row = await regdb.getSupabaseConnection(id);
+  if (!row) throw Object.assign(new Error("No such Supabase connection."), { status: 404 });
+  const token = await regdb.readSupabaseToken(row);
+  await regdb.audit(req.user.email, "supabase.connection.token.copy", row.name, { id });
+  res.json({ token });
 }));
 // Secret NAMES only — values (and digests) are never sent to the browser.
 app.get("/api/config/supabase/variables", requireConfig, wrap(async (req, res) => {

@@ -407,6 +407,31 @@ await t("normCoolifyUrl adds https and strips a trailing /api/v1", () => {
   assert.strictEqual(regdb.normCoolifyUrl("coolify-kvm.aeondelightasia.online"), "https://coolify-kvm.aeondelightasia.online");
   assert.strictEqual(regdb.normCoolifyUrl("https://x/api/v1/"), "https://x");
 });
+await t("a connection list view shows the first three token characters and nothing else", async () => {
+  const pub = regdb.connectionPublic({
+    id: 1, name: "kvm", base_url: "https://coolify.example", from_env: false,
+    token_enc: "v1:not-the-token", sort_order: 0, target_count: 2,
+  });
+  const view = regdb.withTokenPreview(pub, "abcdefghij");
+  assert.strictEqual(view.tokenPreview, "abc");
+  assert.strictEqual(view.tokenLength, 10);
+  assert.strictEqual(view.hasToken, true);
+  assert.strictEqual(view.token, undefined);
+  assert.strictEqual(view.token_enc, undefined);
+  const json = JSON.stringify(view);
+  assert.ok(!json.includes("defghij"), "list view included the rest of the token");
+  assert.ok(!json.includes("not-the-token"), "list view included the stored ciphertext");
+  assert.deepStrictEqual(regdb.tokenMask(""), { tokenPreview: "", tokenLength: 0 });
+  assert.deepStrictEqual(regdb.tokenMask("ab"), { tokenPreview: "ab", tokenLength: 2 });
+  const envView = await regdb.coolifyConnectionView({
+    id: 0, name: "env", base_url: "https://coolify-kvm.aeondelightasia.online",
+    from_env: true, token_enc: null, sort_order: 0, target_count: 0,
+  });
+  assert.strictEqual(envView.tokenPreview, "tes");
+  assert.strictEqual(envView.tokenLength, String(process.env.COOLIFY_API_TOKEN || "").length);
+  assert.ok(!JSON.stringify(envView).includes(String(process.env.COOLIFY_API_TOKEN || "missing")),
+    "from-env list view included the full token");
+});
 
 g("coolify — applications");
 await t("applications are listed with their first domain", async () => {

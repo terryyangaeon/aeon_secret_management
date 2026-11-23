@@ -115,6 +115,46 @@ t("Save checks new secret validity in the page before calling the API", () => {
   assert.ok(err && serverErr, "could not find the shared error sentence");
   assert.strictEqual(err[1], serverErr[1] + serverErr[2]);
 });
+t("copying a connection token is admin-only and the audit entry has no token", () => {
+  function slice(start, end) {
+    const i = server.indexOf(start);
+    const j = server.indexOf(end, i + start.length);
+    assert.ok(i > 0 && j > i, "could not find " + start);
+    return server.slice(i, j);
+  }
+  const checks = [
+    ['app.get("/api/config/coolify/connections/:id/token"', 'app.post("/api/config/coolify"', "coolify.connection.token.copy"],
+    ['app.get("/api/config/supabase/connections/:id/token"', 'app.get("/api/config/supabase/variables"', "supabase.connection.token.copy"],
+  ];
+  checks.forEach(([start, end, action]) => {
+    const body = slice(start, end);
+    assert.ok(body.includes("requireConfig"), start + " is not admin-only");
+    const audit = body.match(/regdb\.audit\(([^)]*)\)/);
+    assert.ok(audit, "no audit call in " + start);
+    assert.ok(audit[1].includes('"' + action + '"'), "audit action missing");
+    assert.ok(/\{\s*id\s*\}\s*$/.test(audit[1]), "audit detail must be the connection id only");
+    assert.ok(!audit[1].replace(action, "").includes("token"), "audit arguments must not include the token");
+    assert.ok(!body.includes("console.log"), "copy handler must not log");
+    assert.ok(!body.includes("token_enc"), "copy handler must not send the ciphertext");
+  });
+  const list = server.slice(server.indexOf('app.get("/api/config/coolify"'), server.indexOf('app.post("/api/config/coolify/connections"'));
+  assert.ok(list.includes("listConnectionsPublic"));
+  assert.ok(!list.includes("token_enc"));
+  assert.ok(routes.some((r) => r.method === "GET" && r.path === "/api/config/coolify/connections/:id/token"));
+  assert.ok(routes.some((r) => r.method === "GET" && r.path === "/api/config/supabase/connections/:id/token"));
+});
+t("connections are one page and the add button sits above the table", () => {
+  assert.ok(configHtml.includes('data-view="connections"'));
+  assert.ok(!configHtml.includes('data-view="coolify"'));
+  assert.ok(!configHtml.includes('data-view="supabase"'));
+  const section = configHtml.slice(configHtml.indexOf('id="view-connections"'), configHtml.indexOf('id="view-alerts"'));
+  const add = section.indexOf('id="addConnBtn"');
+  const table = section.indexOf("<table>");
+  assert.ok(add > 0 && table > add, "Add connection must sit above the table");
+  assert.ok(section.includes('id="connAddModal"') === false);
+  assert.ok(configHtml.includes('id="caType"'));
+  assert.ok(configHtml.includes("tokenPreview"));
+});
 t("creating and updating an application both reject an over-long lifetime", () => {
   const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));
   const put = server.slice(server.indexOf('app.put("/api/config/apps/:id"'), server.indexOf('app.delete("/api/config/apps/:id"'));

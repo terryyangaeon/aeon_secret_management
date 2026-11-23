@@ -25,8 +25,7 @@
     <nav class="sidebar">
       <button class="side-item on" data-view="apps">應用程式 Applications</button>
       <button class="side-item" data-view="targets">傳送位置 Delivery targets</button>
-      <button class="side-item" data-view="coolify">Coolify 連線 Connection</button>
-      <button class="side-item" data-view="supabase">Supabase 連線 Connection</button>
+      <button class="side-item" data-view="connections">連線 Connections</button>
       <button class="side-item" data-view="alerts">電郵提醒 Alerts</button>
       <button class="side-item" data-view="audit">稽核記錄 Audit log</button>
     </nav>
@@ -73,33 +72,30 @@
           </div>
         </section>
 
-        <!-- Coolify -->
-        <section id="view-coolify" hidden>
-          <h1 class="sect">Coolify 連線 Connections</h1>
-          <p class="hint" style="margin-top:-6px">Each named connection is a separate Coolify server (for example kvm and main). Delivery targets pick which connection supplies their application list.
-            · 每個連線代表一台獨立的 Coolify 伺服器;傳送位置會依所選連線載入應用程式清單。</p>
-          <div class="hint" style="margin:0 0 8px">How to get the token: Coolify → Keys &amp; Tokens → API Tokens → Check read:sensitive、write、deploy permission.</div>
-          <div id="cConnList" class="coolify-conn-list"></div>
-          <button type="button" class="btn ghost" id="cAddConn">+ Add connection</button>
-          <div class="panel" id="cResult" hidden style="margin-top:16px">
-            <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
-            <dl class="kv" id="cProbe"></dl>
-            <p class="hint" id="cNote"></p>
+        <!-- Connections: Coolify servers and Supabase projects on one page. -->
+        <section id="view-connections" hidden>
+          <div class="head-row">
+            <h1 class="sect" style="margin:0">連線 Connections</h1>
+            <button class="btn primary" id="addConnBtn" type="button">+ 加入連線 Add connection</button>
           </div>
-        </section>
-
-        <!-- Supabase -->
-        <section id="view-supabase" hidden>
-          <h1 class="sect">Supabase 連線 Connections</h1>
-          <p class="hint" style="margin-top:-6px">Each named connection is one Supabase project. Delivery targets pick a connection and load that project's secrets.
-            · 每個連線代表一個 Supabase 專案;傳送位置會依所選連線載入該專案的環境變數。</p>
-          <div class="hint" style="margin:0 0 8px">How to get the token: Supabase account → Access Tokens. It needs permission to read and write project secrets (secrets:read and secrets:write).</div>
-          <div id="sConnList" class="supabase-conn-list"></div>
-          <button type="button" class="btn ghost" id="sAddConn">+ Add connection</button>
-          <div class="panel" id="sResult" hidden style="margin-top:16px">
+          <p class="hint" style="margin-top:-6px">Coolify servers and Supabase projects live here. Delivery targets pick one of these connections.
+            · Coolify 伺服器與 Supabase 專案都在這裡。傳送位置會選用其中一個連線。</p>
+          <div class="tablewrap">
+            <table>
+              <thead><tr>
+                <th>類型 Type</th>
+                <th>名稱 Name</th>
+                <th>Server URL</th>
+                <th>API token</th>
+                <th class="right">　</th>
+              </tr></thead>
+              <tbody id="connRows"></tbody>
+            </table>
+          </div>
+          <div class="panel" id="connResult" hidden style="margin-top:16px">
             <h2 class="sect" style="font-size:13px">測試結果 Test result</h2>
-            <dl class="kv" id="sProbe"></dl>
-            <p class="hint" id="sNote"></p>
+            <dl class="kv" id="connProbe"></dl>
+            <p class="hint" id="connNote"></p>
           </div>
         </section>
 
@@ -220,6 +216,51 @@
     </div>
   </div></div>
 
+  <div class="modal-overlay" id="connAddModal" hidden><div class="modal-box">
+    <div class="modal-title">加入連線 Add connection</div>
+    <div class="fieldlbl">類型 Type</div>
+    <select id="caType">
+      <option value="coolify">Coolify</option>
+      <option value="supabase">Supabase</option>
+    </select>
+    <div class="fieldlbl">Name</div>
+    <input type="text" id="caName" autocomplete="off" placeholder="e.g. Coolify kvm">
+    <div class="fieldlbl" id="caUrlLbl">Server URL</div>
+    <input type="text" id="caUrl" autocomplete="off">
+    <p class="hint" id="caHint"></p>
+    <div class="fieldlbl">API token</div>
+    <input type="password" id="caToken" autocomplete="off" placeholder="Paste the API token">
+    <div class="modal-acts">
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="caCancel" type="button">取消 Cancel</button>
+      <button class="btn primary" id="caSave" type="button">儲存 Save</button>
+    </div>
+  </div></div>
+
+  <div class="modal-overlay" id="connEditModal" hidden><div class="modal-box">
+    <div class="modal-title" id="ceTitle">編輯連線 Edit connection</div>
+    <p class="hint" id="ceType" style="margin-top:0"></p>
+    <div class="fieldlbl">Name</div>
+    <input type="text" id="ceName" autocomplete="off">
+    <div class="fieldlbl" id="ceUrlLbl">Server URL</div>
+    <input type="text" id="ceUrl" autocomplete="off">
+    <p class="hint" id="ceHint"></p>
+    <div class="fieldlbl">API token</div>
+    <input type="password" id="ceToken" autocomplete="off" placeholder="Paste to replace the saved token">
+    <p class="hint" id="ceState"></p>
+    <div class="panel" id="ceResult" hidden>
+      <dl class="kv" id="ceProbe"></dl>
+      <p class="hint" id="ceNote"></p>
+    </div>
+    <div class="modal-acts">
+      <button class="btn ghost" id="ceDel" type="button" style="color:#b91c1c;border-color:#fecaca">移除 Remove</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" id="ceTest" type="button">測試連線 Test connection</button>
+      <button class="btn ghost" id="ceCancel" type="button">取消 Cancel</button>
+      <button class="btn primary" id="ceSave" type="button">儲存 Save</button>
+    </div>
+  </div></div>
+
 <script src="/static/appreg.js"></script>
 <script src="/static/oneview-navbar.js"></script>
 <script src="/static/change-password.js"></script>
@@ -231,15 +272,14 @@
 
   // ---- View switching ----
   var TITLES = { apps: "應用程式 Applications", targets: "傳送位置 Delivery targets",
-                 coolify: "Coolify 連線", supabase: "Supabase 連線", alerts: "電郵提醒 Alerts", audit: "稽核記錄 Audit log" };
+                 connections: "連線 Connections", alerts: "電郵提醒 Alerts", audit: "稽核記錄 Audit log" };
   $$(".side-item").forEach(function (b) {
     b.addEventListener("click", function () {
       var v = b.getAttribute("data-view");
       $$(".side-item").forEach(function (x) { x.classList.toggle("on", x === b); });
-      ["apps", "targets", "coolify", "supabase", "alerts", "audit"].forEach(function (k) { $("#view-" + k).hidden = k !== v; });
+      ["apps", "targets", "connections", "alerts", "audit"].forEach(function (k) { $("#view-" + k).hidden = k !== v; });
       document.title = TITLES[v] + " — 設定 Configuration";
-      if (v === "coolify") loadCoolify();
-      if (v === "supabase") loadSupabase();
+      if (v === "connections") loadConnections();
       if (v === "alerts") loadAlerts();
       if (v === "audit") loadAudit();
       if (v === "targets") loadTargets();
@@ -836,8 +876,8 @@
     persist();
   });
 
-  // ---- Coolify ----
-  var lastCoolifyTestId = null;
+  // ---- Connections (Coolify and Supabase) ----
+  var editingConn = null;
 
   function connStateText(c) {
     if (c.fromEnv) return "Supplied by COOLIFY_URL / COOLIFY_API_TOKEN environment variables.";
@@ -845,201 +885,263 @@
     return "Token not saved yet — paste one and Save.";
   }
 
-  function renderCoolifyCard(c) {
-    var card = document.createElement("div");
-    card.className = "coolify-conn-card";
-    card.setAttribute("data-id", c._draft ? "" : String(c.id));
-    card.innerHTML =
-      '<h2>' + esc(c._draft ? "New connection" : c.name) + '</h2>' +
-      '<div class="fieldlbl" style="margin-top:0">Name</div>' +
-      '<input type="text" class="cc-name" value="' + esc(c.name || "") + '" placeholder="e.g. Coolify kvm" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
-      '<div class="fieldlbl">Server URL</div>' +
-      '<input type="text" class="cc-url" value="' + esc(c.baseUrl || "") + '" placeholder="https://coolify-kvm.aeondelightasia.online" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
-      '<div class="fieldlbl">API token</div>' +
-      '<input type="password" class="cc-token" placeholder="Paste to replace the saved token" autocomplete="off"' + (c.fromEnv ? " disabled" : "") + ">" +
-      '<p class="coolify-conn-meta cc-state">' + esc(connStateText(c)) + "</p>" +
-      '<div class="modal-acts" style="margin-top:12px">' +
-        (c.fromEnv ? "" : '<button type="button" class="btn primary cc-save">Save</button>') +
-        '<button type="button" class="btn ghost cc-test"' + (c._draft ? " disabled" : "") + ">Test connection</button>" +
-        (c._draft || c.fromEnv ? "" : '<button type="button" class="btn ghost cc-del" style="color:#b91c1c;border-color:#fecaca">Remove</button>') +
-      "</div>";
-    return card;
+  function requestConnection(kind, id, action, body) {
+    if (kind === "supabase") {
+      if (action === "create") return api("POST", "/api/config/supabase/connections", body);
+      if (action === "update") return api("PUT", "/api/config/supabase/connections/" + id, body);
+      if (action === "delete") return api("DELETE", "/api/config/supabase/connections/" + id);
+      if (action === "test") return api("GET", "/api/config/supabase/connections/" + id + "/test");
+      return api("GET", "/api/config/supabase/connections/" + id + "/token");
+    }
+    if (action === "create") return api("POST", "/api/config/coolify/connections", body);
+    if (action === "update") return api("PUT", "/api/config/coolify/connections/" + id, body);
+    if (action === "delete") return api("DELETE", "/api/config/coolify/connections/" + id);
+    if (action === "test") return api("GET", "/api/config/coolify/connections/" + id + "/test");
+    return api("GET", "/api/config/coolify/connections/" + id + "/token");
   }
 
-  function loadCoolify() {
-    return api("GET", "/api/config/coolify").then(function (d) {
-      coolifyConnections = d.connections || [];
-      var list = $("#cConnList");
-      list.innerHTML = "";
-      coolifyConnections.forEach(function (c) { list.appendChild(renderCoolifyCard(c)); });
+  function maskedToken(c) {
+    var preview = String(c.tokenPreview || "");
+    var len = Number(c.tokenLength) || 0;
+    if (!preview && len <= 0) return "—";
+    var n = len - preview.length;
+    if (n < 0) n = 0;
+    var stars = "";
+    while (n--) stars += "*";
+    return preview + stars;
+  }
+
+  function findConn(kind, id) {
+    var list = kind === "supabase" ? supabaseConnections : coolifyConnections;
+    for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i];
+    return null;
+  }
+
+  function renderConnRow(c) {
+    var kind = c.kind === "supabase" ? "supabase" : "coolify";
+    var badge = kind === "supabase" ? '<span class="st warning">Supabase</span>' : '<span class="st on">Coolify</span>';
+    var copy = c.hasToken
+      ? ' <button type="button" class="tbl-btn ghost conn-copy" data-kind="' + kind + '" data-id="' + c.id + '">Copy</button>'
+      : "";
+    return "<tr>" +
+      "<td>" + badge + "</td>" +
+      "<td><b>" + esc(c.name || "") + "</b></td>" +
+      '<td class="mono">' + esc(c.url || "—") + "</td>" +
+      '<td><span class="token-mask"><code>' + esc(maskedToken(c)) + "</code>" + copy + "</span></td>" +
+      '<td class="right nowrap">' +
+        '<button type="button" class="tbl-btn ghost conn-test" data-kind="' + kind + '" data-id="' + c.id + '">Test connection</button> ' +
+        '<button type="button" class="tbl-btn conn-edit" data-kind="' + kind + '" data-id="' + c.id + '">Edit</button>' +
+      "</td></tr>";
+  }
+
+  function loadConnections() {
+    return Promise.all([
+      api("GET", "/api/config/coolify"),
+      api("GET", "/api/config/supabase")
+    ]).then(function (pair) {
+      coolifyConnections = (pair[0].connections || []).map(function (c) {
+        return Object.assign({}, c, { kind: "coolify", url: c.baseUrl || "" });
+      });
+      supabaseConnections = (pair[1].connections || []).map(function (c) {
+        return Object.assign({}, c, { kind: "supabase", url: c.endpointUrl || "" });
+      });
+      var rows = coolifyConnections.concat(supabaseConnections);
+      $("#connRows").innerHTML = rows.map(renderConnRow).join("") ||
+        '<tr><td colspan="5" class="muted">No connections yet.</td></tr>';
     }).catch(AR.handleErr);
   }
 
-  $("#cAddConn").addEventListener("click", function () {
-    $("#cConnList").appendChild(renderCoolifyCard({ _draft: true, name: "", baseUrl: "", hasToken: false, targetCount: 0 }));
-  });
-
-  $("#cConnList").addEventListener("click", function (e) {
-    var card = e.target.closest(".coolify-conn-card");
-    if (!card) return;
-    var id = card.getAttribute("data-id");
-    if (e.target.closest(".cc-save")) {
-      var name = card.querySelector(".cc-name").value.trim();
-      var url = card.querySelector(".cc-url").value.trim();
-      var token = card.querySelector(".cc-token").value.trim();
-      if (!name || !url) return AR.msg("Enter name and server URL", "");
-      var req = id
-        ? api("PUT", "/api/config/coolify/connections/" + id, { name: name, baseUrl: url, token: token || undefined })
-        : api("POST", "/api/config/coolify/connections", { name: name, baseUrl: url, token: token });
-      if (!id && !token) return AR.msg("Enter a token", "Paste the Coolify API token the first time you save a new connection.");
-      card.querySelector(".cc-save").disabled = true;
-      req.then(function () {
-        card.querySelector(".cc-token").value = "";
-        AR.toast("Saved");
-        return loadCoolify();
-      }).catch(AR.handleErr).then(function () {
-        var b = card.querySelector(".cc-save");
-        if (b) b.disabled = false;
-      });
-      return;
-    }
-    if (e.target.closest(".cc-test")) {
-      if (!id) return;
-      lastCoolifyTestId = id;
-      e.target.closest(".cc-test").disabled = true;
-      $("#cResult").hidden = true;
-      api("GET", "/api/config/coolify/connections/" + id + "/test").then(function (r) {
-        showCoolifyTest(r);
-      }).catch(AR.handleErr).then(function () {
-        var b = card.querySelector(".cc-test");
-        if (b) b.disabled = false;
-      });
-      return;
-    }
-    if (e.target.closest(".cc-del")) {
-      if (!id) { card.remove(); return; }
-      AR.confirm("Remove connection",
-        "This deletes the saved URL and token for this Coolify server. Delivery targets must be moved first.",
-        { okText: "Remove", danger: true }).then(function (ok) {
-          if (!ok) return;
-          return api("DELETE", "/api/config/coolify/connections/" + id).then(function () {
-            AR.toast("Removed");
-            return loadCoolify();
-          }).catch(AR.handleErr);
-        });
-    }
-  });
-
-  function showCoolifyTest(r) {
-    $("#cProbe").innerHTML = [
+  function probeHtml(rows) {
+    return rows.map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(String(kv[1])) + "</dd>"; }).join("");
+  }
+  function coolifyProbeRows(r) {
+    return [
       ["Server", r.baseUrl || "—"],
       ["Team", r.team || "(not returned)"],
       ["Applications visible", String(r.applications)],
-      ["Can read values",
-        r.canReadValues === null ? "—"
-          : r.canReadValues ? "Yes" : "No — rollback would be limited"],
-      ["Overall",
-        r.ok && r.canReadValues !== false ? "Ready for auto-rotation"
-          : r.ok ? "Connected, but values are not readable"
-          : "Not usable for auto-rotation"]
-    ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
-    $("#cNote").textContent = r.note || "";
-    $("#cResult").hidden = false;
+      ["Can read values", r.canReadValues === null ? "—" : r.canReadValues ? "Yes" : "No — rollback would be limited"],
+      ["Overall", r.ok && r.canReadValues !== false ? "Ready for auto-rotation" : r.ok ? "Connected, but values are not readable" : "Not usable for auto-rotation"]
+    ];
+  }
+  function supabaseProbeRows(r) {
+    return [
+      ["Endpoint", r.endpoint || "—"],
+      ["Project", r.projectRef || "—"],
+      ["Secrets visible", String(r.secrets)],
+      ["Can read values", "No — Supabase returns a digest, not the secret"],
+      ["Overall", r.ok ? "Ready to update secrets" : "Not usable"]
+    ];
+  }
+  function showConnTest(kind, r, where) {
+    var probe = where === "modal" ? $("#ceProbe") : $("#connProbe");
+    var note = where === "modal" ? $("#ceNote") : $("#connNote");
+    var panel = where === "modal" ? $("#ceResult") : $("#connResult");
+    probe.innerHTML = probeHtml(kind === "supabase" ? supabaseProbeRows(r) : coolifyProbeRows(r));
+    note.textContent = r.note || "";
+    panel.hidden = false;
   }
 
-  // ---- Supabase ----
-  function supabaseStateText(c) {
-    if (c.hasToken) return "Token stored encrypted" + (c.targetCount ? " · used by " + c.targetCount + " delivery target(s)" : "");
-    return "Token not saved yet — paste one and Save.";
+  function writeClipboard(value) {
+    function fallback() {
+      var el = document.createElement("textarea");
+      el.value = value;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      el.value = "";
+      el.remove();
+      if (!ok) return Promise.reject(new Error("This browser could not copy to the clipboard."));
+      return Promise.resolve();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(value).catch(fallback);
+    }
+    return fallback();
   }
-  function renderSupabaseCard(c) {
-    var card = document.createElement("div");
-    card.className = "supabase-conn-card";
-    card.setAttribute("data-id", c._draft ? "" : String(c.id));
-    card.innerHTML =
-      '<h2>' + esc(c._draft ? "New connection" : c.name) + '</h2>' +
-      '<div class="fieldlbl" style="margin-top:0">Name</div>' +
-      '<input type="text" class="sc-name" value="' + esc(c.name || "") + '" placeholder="e.g. ITQPOMS" autocomplete="off">' +
-      '<div class="fieldlbl">Endpoint URL</div>' +
-      '<input type="text" class="sc-url" value="' + esc(c.endpointUrl || "") + '" placeholder="https://your-project-ref.supabase.co" autocomplete="off">' +
-      '<p class="hint">The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/&lt;project-ref&gt;.</p>' +
-      '<div class="fieldlbl">API token</div>' +
-      '<input type="password" class="sc-token" placeholder="Paste to replace the saved token" autocomplete="off">' +
-      '<p class="supabase-conn-meta sc-state">' + esc(supabaseStateText(c)) + "</p>" +
-      '<div class="modal-acts" style="margin-top:12px">' +
-        '<button type="button" class="btn primary sc-save">Save</button>' +
-        '<button type="button" class="btn ghost sc-test"' + (c._draft ? " disabled" : "") + ">Test connection</button>" +
-        (c._draft ? "" : '<button type="button" class="btn ghost sc-del" style="color:#b91c1c;border-color:#fecaca">Remove</button>') +
-      "</div>";
-    return card;
+
+  function copyConnectionToken(kind, id, btn) {
+    btn.disabled = true;
+    requestConnection(kind, id, "token").then(function (r) {
+      var value = r && r.token ? String(r.token) : "";
+      if (!value) throw new Error("No token is saved for this connection.");
+      return writeClipboard(value);
+    }).then(function () {
+      AR.toast("Copied");
+    }).catch(AR.handleErr).then(function () { btn.disabled = false; });
   }
-  function loadSupabase() {
-    return api("GET", "/api/config/supabase").then(function (d) {
-      supabaseConnections = d.connections || [];
-      var list = $("#sConnList");
-      list.innerHTML = "";
-      supabaseConnections.forEach(function (c) { list.appendChild(renderSupabaseCard(c)); });
-    }).catch(AR.handleErr);
+
+  function applyAddType() {
+    var supa = $("#caType").value === "supabase";
+    $("#caUrlLbl").textContent = supa ? "Endpoint URL" : "Server URL";
+    $("#caUrl").placeholder = supa ? "https://your-project-ref.supabase.co" : "https://coolify-kvm.aeondelightasia.online";
+    $("#caName").placeholder = supa ? "e.g. ITQPOMS" : "e.g. Coolify kvm";
+    $("#caHint").textContent = supa
+      ? "The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/<project-ref>. Token: Supabase account → Access Tokens, with secrets:read and secrets:write."
+      : "Coolify → Keys & Tokens → API Tokens. The token needs read:sensitive, write, and deploy.";
   }
-  $("#sAddConn").addEventListener("click", function () {
-    $("#sConnList").appendChild(renderSupabaseCard({ _draft: true, name: "", endpointUrl: "", hasToken: false, targetCount: 0 }));
+
+  function closeAdd() {
+    $("#caToken").value = "";
+    $("#connAddModal").hidden = true;
+  }
+  function closeEdit() {
+    $("#ceToken").value = "";
+    editingConn = null;
+    $("#connEditModal").hidden = true;
+  }
+
+  $("#addConnBtn").addEventListener("click", function () {
+    $("#caType").value = "coolify";
+    $("#caName").value = "";
+    $("#caUrl").value = "";
+    $("#caToken").value = "";
+    applyAddType();
+    $("#connAddModal").hidden = false;
   });
-  $("#sConnList").addEventListener("click", function (e) {
-    var card = e.target.closest(".supabase-conn-card");
-    if (!card) return;
-    var id = card.getAttribute("data-id");
-    if (e.target.closest(".sc-save")) {
-      var name = card.querySelector(".sc-name").value.trim();
-      var url = card.querySelector(".sc-url").value.trim();
-      var token = card.querySelector(".sc-token").value.trim();
-      if (!name || !url) return AR.msg("Enter name and endpoint URL", "Use the project URL, for example https://your-project-ref.supabase.co");
-      var req = id
-        ? api("PUT", "/api/config/supabase/connections/" + id, { name: name, endpointUrl: url, token: token || undefined })
-        : api("POST", "/api/config/supabase/connections", { name: name, endpointUrl: url, token: token });
-      if (!id && !token) return AR.msg("Enter a token", "Paste the Supabase access token the first time you save a new connection.");
-      card.querySelector(".sc-save").disabled = true;
-      req.then(function () {
-        card.querySelector(".sc-token").value = "";
-        AR.toast("Saved");
-        return loadSupabase();
-      }).catch(AR.handleErr).then(function () {
-        var b = card.querySelector(".sc-save");
-        if (b) b.disabled = false;
+  $("#caType").addEventListener("change", applyAddType);
+  $("#caCancel").addEventListener("click", closeAdd);
+  $("#caSave").addEventListener("click", function () {
+    var kind = $("#caType").value === "supabase" ? "supabase" : "coolify";
+    var name = $("#caName").value.trim();
+    var url = $("#caUrl").value.trim();
+    var token = $("#caToken").value;
+    if (!name || !url || !String(token).trim()) return AR.msg("Name, URL, and API token are required.", "");
+    var body = kind === "supabase"
+      ? { name: name, endpointUrl: url, token: token }
+      : { name: name, baseUrl: url, token: token };
+    $("#caSave").disabled = true;
+    requestConnection(kind, "", "create", body).then(function () {
+      closeAdd();
+      AR.toast("Saved");
+      return loadConnections();
+    }).catch(AR.handleErr).then(function () { $("#caSave").disabled = false; });
+  });
+
+  function openEdit(kind, id) {
+    var c = findConn(kind, id);
+    if (!c) return;
+    editingConn = c;
+    var supa = kind === "supabase";
+    $("#ceType").textContent = supa ? "Type: Supabase" : "Type: Coolify";
+    $("#ceName").value = c.name || "";
+    $("#ceUrl").value = c.url || "";
+    $("#ceToken").value = "";
+    $("#ceUrlLbl").textContent = supa ? "Endpoint URL" : "Server URL";
+    $("#ceHint").textContent = supa
+      ? "The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/<project-ref>."
+      : "Coolify server URL, for example https://coolify-kvm.aeondelightasia.online.";
+    $("#ceState").textContent = connStateText(c);
+    $("#ceResult").hidden = true;
+    var locked = !!c.fromEnv;
+    $("#ceName").disabled = locked;
+    $("#ceUrl").disabled = locked;
+    $("#ceToken").disabled = locked;
+    $("#ceSave").hidden = locked;
+    $("#ceDel").hidden = locked;
+    $("#connEditModal").hidden = false;
+  }
+
+  $("#connRows").addEventListener("click", function (e) {
+    var btn = e.target.closest(".conn-copy, .conn-test, .conn-edit");
+    if (!btn) return;
+    var kind = btn.getAttribute("data-kind");
+    var id = btn.getAttribute("data-id");
+    if (btn.classList.contains("conn-copy")) { copyConnectionToken(kind, id, btn); return; }
+    if (btn.classList.contains("conn-edit")) { openEdit(kind, id); return; }
+    btn.disabled = true;
+    $("#connResult").hidden = true;
+    requestConnection(kind, id, "test").then(function (r) {
+      showConnTest(kind, r, "page");
+    }).catch(AR.handleErr).then(function () { btn.disabled = false; });
+  });
+
+  $("#ceCancel").addEventListener("click", closeEdit);
+  $("#ceTest").addEventListener("click", function () {
+    if (!editingConn) return;
+    var kind = editingConn.kind;
+    var id = editingConn.id;
+    $("#ceTest").disabled = true;
+    $("#ceResult").hidden = true;
+    requestConnection(kind, id, "test").then(function (r) {
+      if (!editingConn || String(editingConn.id) !== String(id) || editingConn.kind !== kind) return;
+      showConnTest(kind, r, "modal");
+    }).catch(AR.handleErr).then(function () { $("#ceTest").disabled = false; });
+  });
+  $("#ceSave").addEventListener("click", function () {
+    if (!editingConn || editingConn.fromEnv) return;
+    var name = $("#ceName").value.trim();
+    var url = $("#ceUrl").value.trim();
+    var token = $("#ceToken").value;
+    if (!name || !url) return AR.msg("Enter name and URL", "");
+    var body = editingConn.kind === "supabase"
+      ? { name: name, endpointUrl: url, token: String(token).trim() || undefined }
+      : { name: name, baseUrl: url, token: String(token).trim() || undefined };
+    $("#ceSave").disabled = true;
+    requestConnection(editingConn.kind, editingConn.id, "update", body).then(function () {
+      $("#ceToken").value = "";
+      closeEdit();
+      AR.toast("Saved");
+      return loadConnections();
+    }).catch(AR.handleErr).then(function () { $("#ceSave").disabled = false; });
+  });
+  $("#ceDel").addEventListener("click", function () {
+    if (!editingConn || editingConn.fromEnv) return;
+    var c = editingConn;
+    var noun = c.kind === "supabase" ? "Supabase project" : "Coolify server";
+    AR.confirm("Remove connection",
+      "This deletes the saved URL and token for this " + noun + ". Delivery targets must be moved first.",
+      { okText: "Remove", danger: true }).then(function (ok) {
+        if (!ok) return;
+        return requestConnection(c.kind, c.id, "delete").then(function () {
+          closeEdit();
+          AR.toast("Removed");
+          return loadConnections();
+        }).catch(AR.handleErr);
       });
-      return;
-    }
-    if (e.target.closest(".sc-test")) {
-      if (!id) return;
-      e.target.closest(".sc-test").disabled = true;
-      $("#sResult").hidden = true;
-      api("GET", "/api/config/supabase/connections/" + id + "/test").then(function (r) {
-        $("#sProbe").innerHTML = [
-          ["Endpoint", r.endpoint || "—"],
-          ["Project", r.projectRef || "—"],
-          ["Secrets visible", String(r.secrets)],
-          ["Can read values", "No — Supabase returns a digest, not the secret"],
-          ["Overall", r.ok ? "Ready to update secrets" : "Not usable"]
-        ].map(function (kv) { return "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; }).join("");
-        $("#sNote").textContent = r.note || "";
-        $("#sResult").hidden = false;
-      }).catch(AR.handleErr).then(function () {
-        var b = card.querySelector(".sc-test");
-        if (b) b.disabled = false;
-      });
-      return;
-    }
-    if (e.target.closest(".sc-del")) {
-      if (!id) { card.remove(); return; }
-      AR.confirm("Remove connection",
-        "This deletes the saved endpoint and token for this Supabase project. Delivery targets must be moved first.",
-        { okText: "Remove", danger: true }).then(function (ok) {
-          if (!ok) return;
-          return api("DELETE", "/api/config/supabase/connections/" + id).then(function () {
-            AR.toast("Removed");
-            return loadSupabase();
-          }).catch(AR.handleErr);
-        });
-    }
   });
 
   // ---- Alerts ----

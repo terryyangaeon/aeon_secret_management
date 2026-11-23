@@ -209,12 +209,12 @@ Coolify → **Keys & Tokens → API Tokens**. The token needs:
 | `write` | to change the variable |
 | `deploy` | to restart the application |
 
-Paste it into Configuration → Coolify connection, then **Test connection**. API access must be
+Paste it into Configuration → Connections, add a Coolify connection, then **Test connection**. API access must be
 enabled under Settings → Advanced.
 
 ## Supabase connection
 
-Configuration → **Supabase connection**. Each connection is one project:
+Configuration → **Connections**, then add a connection and choose Supabase. Each connection is one project:
 
 | Field | What to enter |
 |---|---|
@@ -230,8 +230,8 @@ On **Delivery targets**, set the line's source to Supabase, pick that connection
 
 1. Sign in as the bootstrap admin, add the real admins in Account Management.
    Keep one **Email-type** admin as break-glass, in case Microsoft sign-in breaks.
-2. Configuration → **Coolify connection** → server URL + token → **Test connection**.
-   Check it reports *Can read values: yes*.
+2. Configuration → **Connections** → Add connection → Coolify → server URL + token → **Test connection**.
+   Check it reports *Can read values: yes*. A Supabase project is the same page, with type Supabase.
 3. Configuration → **Alerts** → sender mailbox, recipients → **Send test email** (a sample, no real
    data). **Send alerts now** beside it runs the real sweep and emails the recipients immediately;
    thresholds already notified are skipped, and the page offers to re-send them.
