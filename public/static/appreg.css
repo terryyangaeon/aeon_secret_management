@@ -133,6 +133,12 @@ input:disabled, select:disabled { background: #f5f5f4; color: #a8a29e; cursor: n
 .modal-overlay { position: fixed; inset: 0; background: rgba(15,12,8,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1500; }
 .modal-box { background: #fff; border-radius: 14px; padding: 24px; width: 100%; max-width: 520px; box-shadow: 0 20px 60px rgba(0,0,0,.3); max-height: 90vh; overflow-y: auto; }
 .modal-box.wide { max-width: 720px; }
+#appModal .modal-box { max-width: 1120px; }
+#appModal .app-fields { max-width: 680px; }
+.app-targets { margin-top: 8px; border-top: 1px solid #f0eee6; padding-top: 4px; }
+.app-targets .tgt-head, .app-targets .tgt-line {
+  grid-template-columns: minmax(150px, 1.15fr) minmax(110px, 0.8fr) minmax(150px, 1.15fr) minmax(120px, 0.9fr) 72px minmax(160px, 1.1fr) auto;
+}
 .modal-title { font-size: 18px; font-weight: 800; color: #90207a; margin-bottom: 6px; }
 .modal-acts { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
 

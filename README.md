@@ -224,7 +224,7 @@ Configuration → **Connections**, then add a connection and choose Supabase. Ea
 
 The token is stored encrypted and is not shown again. **Test connection** checks the project and counts secret names. Supabase does not return the current secret (only a digest), so a rotation snapshots the copy this app already stored.
 
-On **Delivery targets**, set the line's source to Supabase, pick that connection, and choose the secret name. The list is loaded from the project. Coolify lines are unchanged.
+In the application's Add or Edit dialog, add a delivery target, pick that Supabase connection, and choose the secret name. The list is loaded from the project. Coolify lines are unchanged.
 
 ## First run, in order
 
@@ -237,8 +237,8 @@ On **Delivery targets**, set the line's source to Supabase, pick that connection
    thresholds already notified are skipped, and the page offers to re-send them.
 4. Configuration → **Applications** → Add application. Only owned registrations are listed.
    Leave **auto-rotate off** for now.
-5. Configuration → **Delivery targets** → pick the app → pick the Coolify application → pick or type
-   the variable that holds its secret → **Test**. There is no single naming convention:
+5. Configuration → **Applications** → Add or Edit → **Delivery targets** → pick the connection,
+   the Coolify application (or the Supabase secret), and the variable → **Test**. There is no single naming convention:
 
    | App | Variable |
    |---|---|

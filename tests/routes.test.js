@@ -166,11 +166,31 @@ t("the edit modal can copy and reveal a token without saving it unchanged", () =
   assert.ok(configHtml.includes('aria-label="Copy token"'));
   assert.ok(configHtml.includes('aria-label="Show token"'));
   assert.ok(configHtml.includes('"/token?event=view"'));
+  assert.ok(!configHtml.includes("Paste to replace the saved token"));
   const saveAt = configHtml.indexOf('$("#ceSave").addEventListener');
   assert.ok(saveAt > 0 && configHtml.indexOf("editTokenChange()", saveAt) > saveAt);
-  const fn = configHtml.slice(configHtml.indexOf("function editTokenChange"), configHtml.indexOf("function openEdit"));
-  assert.ok(fn.includes("ceRevealed !== null && typed === ceRevealed"));
-  assert.ok(fn.includes("return undefined"));
+  const start = configHtml.indexOf("function tokenReplacement");
+  const end = configHtml.indexOf("function editTokenChange");
+  assert.ok(start > 0 && end > start);
+  const tokenReplacement = new Function(configHtml.slice(start, end) + "\nreturn tokenReplacement;")();
+  const mask = "abc*******";
+  assert.strictEqual(tokenReplacement("mask", mask, mask, null), undefined);
+  assert.strictEqual(tokenReplacement("edit", mask, mask, null), undefined, "the masked preview must never be saved");
+  assert.strictEqual(tokenReplacement("reveal", "abcdefghij", mask, "abcdefghij"), undefined);
+  assert.strictEqual(tokenReplacement("edit", "", mask, null), undefined);
+  assert.strictEqual(tokenReplacement("edit", "new-token", mask, "abcdefghij"), "new-token");
+  assert.strictEqual(tokenReplacement("reveal", "new-token", mask, "abcdefghij"), "new-token");
+});
+t("delivery targets are edited inside the application dialog", () => {
+  assert.ok(!configHtml.includes('data-view="targets"'));
+  assert.ok(!configHtml.includes('id="tgtModal"'));
+  const modal = configHtml.slice(configHtml.indexOf('id="appModal"'), configHtml.indexOf('id="connAddModal"'));
+  assert.ok(modal.includes('id="amLines"'));
+  assert.ok(modal.includes('id="amAddLine"'));
+  assert.ok(modal.includes("傳送位置 Delivery targets"));
+  const saveAt = configHtml.indexOf('$("#amSave").addEventListener');
+  assert.ok(saveAt > 0 && configHtml.indexOf("persistTargets(", saveAt) > saveAt);
+  assert.ok(configHtml.includes("Application saved, a delivery target failed"));
 });
 t("creating and updating an application both reject an over-long lifetime", () => {
   const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));
