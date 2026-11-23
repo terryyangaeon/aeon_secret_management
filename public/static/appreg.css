@@ -46,6 +46,12 @@ table.untracked .reg { width: 20%; overflow-wrap: anywhere; }
 .nowrap { white-space: nowrap; }
 .token-mask { display: inline-flex; align-items: center; gap: 8px; }
 .token-mask code { font-size: 12px; letter-spacing: .03em; }
+.token-field { display: flex; align-items: center; gap: 6px; }
+.token-field input { flex: 1; min-width: 0; }
+.icon-btn { flex: 0 0 auto; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #d6d3d1; background: #fff; border-radius: 8px; color: #44403c; cursor: pointer; padding: 0; }
+.icon-btn:hover { background: #fafaf9; }
+.icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.icon-btn svg { width: 18px; height: 18px; display: block; }
 
 /* Pills */
 .st { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }

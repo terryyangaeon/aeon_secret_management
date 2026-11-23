@@ -129,13 +129,18 @@ t("copying a connection token is admin-only and the audit entry has no token", (
   checks.forEach(([start, end, action]) => {
     const body = slice(start, end);
     assert.ok(body.includes("requireConfig"), start + " is not admin-only");
+    const viewAction = action.replace(".copy", ".view");
     const audit = body.match(/regdb\.audit\(([^)]*)\)/);
     assert.ok(audit, "no audit call in " + start);
-    assert.ok(audit[1].includes('"' + action + '"'), "audit action missing");
+    assert.ok(audit[1].includes('"' + action + '"'), "copy audit action missing");
+    assert.ok(audit[1].includes('"' + viewAction + '"'), "view audit action missing");
+    assert.ok(body.includes('=== "view"'), "view must be chosen only by event=view");
+    assert.ok(!body.includes("req.query.event +"), "do not build the audit action from the query");
     assert.ok(/\{\s*id\s*\}\s*$/.test(audit[1]), "audit detail must be the connection id only");
-    assert.ok(!audit[1].replace(action, "").includes("token"), "audit arguments must not include the token");
-    assert.ok(!body.includes("console.log"), "copy handler must not log");
-    assert.ok(!body.includes("token_enc"), "copy handler must not send the ciphertext");
+    const rest = audit[1].replace(action, "").replace(viewAction, "");
+    assert.ok(!rest.includes("token"), "audit arguments must not include the token");
+    assert.ok(!body.includes("console.log"), "token handler must not log");
+    assert.ok(!body.includes("token_enc"), "token handler must not send the ciphertext");
   });
   const list = server.slice(server.indexOf('app.get("/api/config/coolify"'), server.indexOf('app.post("/api/config/coolify/connections"'));
   assert.ok(list.includes("listConnectionsPublic"));
@@ -154,6 +159,18 @@ t("connections are one page and the add button sits above the table", () => {
   assert.ok(section.includes('id="connAddModal"') === false);
   assert.ok(configHtml.includes('id="caType"'));
   assert.ok(configHtml.includes("tokenPreview"));
+});
+t("the edit modal can copy and reveal a token without saving it unchanged", () => {
+  assert.ok(configHtml.includes('id="ceCopy"'));
+  assert.ok(configHtml.includes('id="ceView"'));
+  assert.ok(configHtml.includes('aria-label="Copy token"'));
+  assert.ok(configHtml.includes('aria-label="Show token"'));
+  assert.ok(configHtml.includes('"/token?event=view"'));
+  const saveAt = configHtml.indexOf('$("#ceSave").addEventListener');
+  assert.ok(saveAt > 0 && configHtml.indexOf("editTokenChange()", saveAt) > saveAt);
+  const fn = configHtml.slice(configHtml.indexOf("function editTokenChange"), configHtml.indexOf("function openEdit"));
+  assert.ok(fn.includes("ceRevealed !== null && typed === ceRevealed"));
+  assert.ok(fn.includes("return undefined"));
 });
 t("creating and updating an application both reject an over-long lifetime", () => {
   const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));

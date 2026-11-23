@@ -472,14 +472,15 @@ app.get("/api/config/coolify/connections/:id/test", requireConfig, wrap(async (r
   try { res.json(await coolify.test(idOf(req.params.id))); } catch (e) { fail(res, e); }
 }));
 // Full token for one connection, admin only. The list API returns the first
-// three characters. This response is the only place the rest is sent, and the
-// audit entry records the copy without the token.
+// three characters. Copy and the edit-modal eye both use this route. The audit
+// entry records which one, and the token itself is never written to the log.
 app.get("/api/config/coolify/connections/:id/token", requireConfig, wrap(async (req, res) => {
   const id = idOf(req.params.id);
   const row = await regdb.getCoolifyConnection(id);
   if (!row) throw Object.assign(new Error("No such Coolify connection."), { status: 404 });
   const token = await regdb.readCoolifyToken(row);
-  await regdb.audit(req.user.email, "coolify.connection.token.copy", row.name, { id });
+  const view = String(req.query.event || "") === "view";
+  await regdb.audit(req.user.email, view ? "coolify.connection.token.view" : "coolify.connection.token.copy", row.name, { id });
   res.json({ token });
 }));
 // Legacy single-form save — updates the first connection or creates Primary.
@@ -557,7 +558,8 @@ app.get("/api/config/supabase/connections/:id/token", requireConfig, wrap(async 
   const row = await regdb.getSupabaseConnection(id);
   if (!row) throw Object.assign(new Error("No such Supabase connection."), { status: 404 });
   const token = await regdb.readSupabaseToken(row);
-  await regdb.audit(req.user.email, "supabase.connection.token.copy", row.name, { id });
+  const view = String(req.query.event || "") === "view";
+  await regdb.audit(req.user.email, view ? "supabase.connection.token.view" : "supabase.connection.token.copy", row.name, { id });
   res.json({ token });
 }));
 // Secret NAMES only — values (and digests) are never sent to the browser.

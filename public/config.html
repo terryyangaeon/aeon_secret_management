@@ -246,7 +246,16 @@
     <input type="text" id="ceUrl" autocomplete="off">
     <p class="hint" id="ceHint"></p>
     <div class="fieldlbl">API token</div>
-    <input type="password" id="ceToken" autocomplete="off" placeholder="Paste to replace the saved token">
+    <div class="token-field">
+      <input type="password" id="ceToken" autocomplete="off" placeholder="Paste to replace the saved token">
+      <button type="button" class="icon-btn" id="ceCopy" aria-label="Copy token" title="Copy">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      </button>
+      <button type="button" class="icon-btn" id="ceView" aria-label="Show token" title="Show">
+        <svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        <svg class="eye-off" hidden viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><path d="M1 1l22 22"></path></svg>
+      </button>
+    </div>
     <p class="hint" id="ceState"></p>
     <div class="panel" id="ceResult" hidden>
       <dl class="kv" id="ceProbe"></dl>
@@ -878,6 +887,9 @@
 
   // ---- Connections (Coolify and Supabase) ----
   var editingConn = null;
+  // The saved token last placed in the edit field by the eye button.
+  // null means the field is whatever the user typed, not a revealed value.
+  var ceRevealed = null;
 
   function connStateText(c) {
     if (c.fromEnv) return "Supplied by COOLIFY_URL / COOLIFY_API_TOKEN environment variables.";
@@ -891,12 +903,14 @@
       if (action === "update") return api("PUT", "/api/config/supabase/connections/" + id, body);
       if (action === "delete") return api("DELETE", "/api/config/supabase/connections/" + id);
       if (action === "test") return api("GET", "/api/config/supabase/connections/" + id + "/test");
+      if (action === "view") return api("GET", "/api/config/supabase/connections/" + id + "/token?event=view");
       return api("GET", "/api/config/supabase/connections/" + id + "/token");
     }
     if (action === "create") return api("POST", "/api/config/coolify/connections", body);
     if (action === "update") return api("PUT", "/api/config/coolify/connections/" + id, body);
     if (action === "delete") return api("DELETE", "/api/config/coolify/connections/" + id);
     if (action === "test") return api("GET", "/api/config/coolify/connections/" + id + "/test");
+    if (action === "view") return api("GET", "/api/config/coolify/connections/" + id + "/token?event=view");
     return api("GET", "/api/config/coolify/connections/" + id + "/token");
   }
 
@@ -1029,9 +1043,30 @@
     $("#connAddModal").hidden = true;
   }
   function closeEdit() {
-    $("#ceToken").value = "";
+    resetEditToken();
     editingConn = null;
     $("#connEditModal").hidden = true;
+  }
+  function setTokenVisible(on) {
+    $("#ceToken").type = on ? "text" : "password";
+    $("#ceView").setAttribute("aria-label", on ? "Hide token" : "Show token");
+    $("#ceView").setAttribute("title", on ? "Hide" : "Show");
+    var show = $("#ceView").querySelector(".eye-on");
+    var hide = $("#ceView").querySelector(".eye-off");
+    if (show) show.hidden = on;
+    if (hide) hide.hidden = !on;
+  }
+  function resetEditToken() {
+    ceRevealed = null;
+    $("#ceToken").value = "";
+    setTokenVisible(false);
+  }
+  // A revealed token that the user did not change is not a replacement.
+  function editTokenChange() {
+    var typed = String($("#ceToken").value || "").trim();
+    if (!typed) return undefined;
+    if (ceRevealed !== null && typed === ceRevealed) return undefined;
+    return typed;
   }
 
   $("#addConnBtn").addEventListener("click", function () {
@@ -1069,7 +1104,7 @@
     $("#ceType").textContent = supa ? "Type: Supabase" : "Type: Coolify";
     $("#ceName").value = c.name || "";
     $("#ceUrl").value = c.url || "";
-    $("#ceToken").value = "";
+    resetEditToken();
     $("#ceUrlLbl").textContent = supa ? "Endpoint URL" : "Server URL";
     $("#ceHint").textContent = supa
       ? "The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/<project-ref>."
@@ -1079,7 +1114,7 @@
     var locked = !!c.fromEnv;
     $("#ceName").disabled = locked;
     $("#ceUrl").disabled = locked;
-    $("#ceToken").disabled = locked;
+    $("#ceToken").readOnly = locked;
     $("#ceSave").hidden = locked;
     $("#ceDel").hidden = locked;
     $("#connEditModal").hidden = false;
@@ -1100,6 +1135,27 @@
   });
 
   $("#ceCancel").addEventListener("click", closeEdit);
+  $("#ceCopy").addEventListener("click", function () {
+    if (!editingConn) return;
+    copyConnectionToken(editingConn.kind, editingConn.id, $("#ceCopy"));
+  });
+  $("#ceView").addEventListener("click", function () {
+    if (!editingConn) return;
+    if ($("#ceToken").type === "text") { setTokenVisible(false); return; }
+    var typed = String($("#ceToken").value || "");
+    if (ceRevealed !== null && typed && typed !== ceRevealed) { setTokenVisible(true); return; }
+    var kind = editingConn.kind;
+    var id = editingConn.id;
+    $("#ceView").disabled = true;
+    requestConnection(kind, id, "view").then(function (r) {
+      if (!editingConn || String(editingConn.id) !== String(id) || editingConn.kind !== kind) return;
+      var value = r && r.token ? String(r.token) : "";
+      if (!value) throw new Error("No token is saved for this connection.");
+      ceRevealed = value;
+      $("#ceToken").value = value;
+      setTokenVisible(true);
+    }).catch(AR.handleErr).then(function () { $("#ceView").disabled = false; });
+  });
   $("#ceTest").addEventListener("click", function () {
     if (!editingConn) return;
     var kind = editingConn.kind;
@@ -1115,14 +1171,12 @@
     if (!editingConn || editingConn.fromEnv) return;
     var name = $("#ceName").value.trim();
     var url = $("#ceUrl").value.trim();
-    var token = $("#ceToken").value;
     if (!name || !url) return AR.msg("Enter name and URL", "");
     var body = editingConn.kind === "supabase"
-      ? { name: name, endpointUrl: url, token: String(token).trim() || undefined }
-      : { name: name, baseUrl: url, token: String(token).trim() || undefined };
+      ? { name: name, endpointUrl: url, token: editTokenChange() }
+      : { name: name, baseUrl: url, token: editTokenChange() };
     $("#ceSave").disabled = true;
     requestConnection(editingConn.kind, editingConn.id, "update", body).then(function () {
-      $("#ceToken").value = "";
       closeEdit();
       AR.toast("Saved");
       return loadConnections();
