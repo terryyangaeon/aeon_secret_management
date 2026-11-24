@@ -192,6 +192,26 @@ t("delivery targets are edited inside the application dialog", () => {
   assert.ok(saveAt > 0 && configHtml.indexOf("persistTargets(", saveAt) > saveAt);
   assert.ok(configHtml.includes("Application saved, a delivery target failed"));
 });
+t("a Supabase auth target patches external_azure_secret", () => {
+  assert.ok(configHtml.includes("Auth: Azure secret (external_azure_secret)"));
+  assert.ok(configHtml.includes("Project secret"));
+  assert.ok(configHtml.includes('class="tm-slot"'));
+  assert.ok(configHtml.includes("supabaseTarget:"));
+  const supabaseJs = fs.readFileSync(path.join(ROOT, "lib/supabase.js"), "utf8");
+  assert.ok(supabaseJs.includes("/config/auth"));
+  assert.ok(supabaseJs.includes("external_azure_secret"));
+  assert.ok(supabaseJs.includes('method: "PATCH"'));
+  assert.ok(supabaseJs.includes("config\\/auth"));
+  const reg = fs.readFileSync(path.join(ROOT, "lib/regdb.js"), "utf8");
+  assert.ok(reg.includes("supabase_target"));
+  assert.ok(reg.includes('slot === "azure_auth" ? "external_azure_secret"'));
+  const rotate = fs.readFileSync(path.join(ROOT, "lib/rotate.js"), "utf8");
+  assert.ok(rotate.includes("setAzureSecret"));
+  assert.ok(rotate.includes("the auth field cannot be restored"));
+  const testRoute = server.slice(server.indexOf('app.post("/api/config/targets/:tid/test"'), server.indexOf("// ---- Coolify connections"));
+  assert.ok(testRoute.includes('mode: azure ? "azure_auth"'));
+  assert.ok(testRoute.includes('hint: azure ? ""'), "the target test must not return an auth secret");
+});
 t("creating and updating an application both reject an over-long lifetime", () => {
   const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));
   const put = server.slice(server.indexOf('app.put("/api/config/apps/:id"'), server.indexOf('app.delete("/api/config/apps/:id"'));

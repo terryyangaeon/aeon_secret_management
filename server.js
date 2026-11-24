@@ -424,15 +424,26 @@ app.post("/api/config/targets/:tid/test", requireConfig, wrap(async (req, res) =
   try {
     const t = await regdb.getTarget(idOf(req.params.tid));
     if (!t) throw Object.assign(new Error("No such target."), { status: 404 });
-    const v = t.kind === "supabase"
-      ? await supabase.getVariable(t.supabase_connection_id, t.var_name)
-      : await coolify.getVariable(t.coolify_connection_id, t.app_uuid, t.var_name);
+    const azure = t.kind === "supabase" && t.supabase_target === "azure_auth";
+    const v = azure
+      ? await supabase.getAzureSecret(t.supabase_connection_id)
+      : t.kind === "supabase"
+        ? await supabase.getVariable(t.supabase_connection_id, t.var_name)
+        : await coolify.getVariable(t.coolify_connection_id, t.app_uuid, t.var_name);
     let health = null;
     if (t.health_url) {
       health = await fetch(t.health_url, { redirect: "follow", signal: AbortSignal.timeout(10000) })
         .then((r) => ({ ok: r.status < 400, status: r.status })).catch((e) => ({ ok: false, status: 0, error: e.message }));
     }
-    res.json({ exists: v.exists, readable: v.readable, hint: v.value ? String(v.value).slice(0, 3) + "…" : "", health });
+    // Never send an auth-config secret, or any prefix of it, to the browser.
+    res.json({
+      exists: v.exists,
+      readable: v.readable,
+      mode: azure ? "azure_auth" : (t.kind === "supabase" ? "secret" : "coolify"),
+      azureEnabled: azure ? v.azureEnabled === true : undefined,
+      hint: azure ? "" : (v.value ? String(v.value).slice(0, 3) + "…" : ""),
+      health,
+    });
   } catch (e) { fail(res, e); }
 }));
 

@@ -659,16 +659,36 @@
   function paintVarOptions(dl, keys) {
     dl.innerHTML = (keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
   }
+  function applySlot(row, fromUser) {
+    var slot = row.querySelector(".tm-slot");
+    var variable = row.querySelector(".tm-var");
+    if (!slot || !variable) return;
+    var azure = slot.value === "azure_auth";
+    variable.readOnly = azure;
+    if (azure) {
+      variable.value = "external_azure_secret";
+      $("#amTgtHint").textContent = "Rotation PATCHes external_azure_secret on the project's auth config and does not restart anything. If Supabase does not return the current value, rollback uses this app's stored copy of the current Entra secret. If there is no stored copy, the auth field cannot be restored.";
+    } else if (fromUser && variable.value === "external_azure_secret") {
+      variable.value = "";
+    }
+  }
   function applyLineKind(row, kind) {
     var supa = kind === "supabase";
     var app = row.querySelector(".tm-app");
     var restart = row.querySelector(".tm-restart");
+    var combo = app.closest(".combo");
+    var slot = row.querySelector(".tm-slot");
+    if (combo) combo.hidden = supa;
+    if (slot) slot.hidden = !supa;
     app.disabled = supa;
     app.placeholder = supa ? "Not used for Supabase" : "Search applications";
     if (supa) {
       app.value = "";
       row.querySelector(".tm-app-id").value = "";
       restart.checked = false;
+      applySlot(row, false);
+    } else if (slot && slot.value === "azure_auth") {
+      row.querySelector(".tm-var").readOnly = false;
     }
     restart.disabled = supa;
   }
@@ -678,6 +698,7 @@
     row.className = "tgt-line";
     if (t && t.id) row.setAttribute("data-id", String(t.id));
     var kind = t && t.kind === "supabase" ? "supabase" : "coolify";
+    var slotValue = t && t.supabase_target === "azure_auth" ? "azure_auth" : "secret";
     var connId = "";
     if (t) {
       connId = kind === "supabase"
@@ -696,7 +717,11 @@
       '<div class="tgt-cell" data-label="服務 Service"><div class="combo">' +
         '<input type="text" class="tm-app" placeholder="Search applications" autocomplete="off" spellcheck="false" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_name || "") : "")) + '">' +
         '<input type="hidden" class="tm-app-id" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_uuid || "") : "")) + '">' +
-        '<div class="combo-list" hidden></div></div></div>' +
+        '<div class="combo-list" hidden></div></div>' +
+        '<select class="tm-slot" hidden>' +
+          '<option value="secret">Project secret</option>' +
+          '<option value="azure_auth"' + (slotValue === "azure_auth" ? " selected" : "") + '>Auth: Azure secret (external_azure_secret)</option>' +
+        '</select></div>' +
       '<div class="tgt-cell" data-label="變數 Variable">' +
         '<input type="text" class="tm-var" placeholder="SSO_CLIENT_SECRET" list="tmVars' + n + '" value="' + esc(t ? (t.var_name || "") : "") + '">' +
         '<datalist id="tmVars' + n + '"></datalist></div>' +
@@ -707,6 +732,12 @@
         '<button type="button" class="tbl-btn ghost tm-test"' + (t && t.id ? "" : " hidden") + ">Test</button>" +
         '<button type="button" class="btn ghost tm-remove" title="Remove">✕</button></div>';
     $("#amLines").appendChild(row);
+    row.querySelector(".tm-slot").addEventListener("change", function () {
+      applySlot(row, true);
+      if (row.querySelector(".tm-slot").value !== "azure_auth") {
+        loadSupabaseVarNames(row.querySelector(".tm-conn-id").value, row.querySelector("datalist"));
+      }
+    });
     applyLineKind(row, t ? kind : "coolify");
     var connInput = row.querySelector(".tm-conn");
     var connHidden = row.querySelector(".tm-conn-id");
@@ -725,7 +756,7 @@
         var label = row.querySelector(".tm-label");
         if (it.kind === "supabase") {
           if (label && !label.value.trim()) label.value = it.name;
-          loadSupabaseVarNames(it.connId, row.querySelector("datalist"));
+          if (row.querySelector(".tm-slot").value !== "azure_auth") loadSupabaseVarNames(it.connId, row.querySelector("datalist"));
         } else {
           ensureConnApps(it.connId).catch(function (err) { $("#amTgtHint").textContent = (err && err.message) || ""; });
         }
@@ -743,7 +774,7 @@
         loadVarNames(connHidden.value, it.id, row.querySelector("datalist"));
       }
     });
-    if (connId && kind === "supabase") loadSupabaseVarNames(connId, row.querySelector("datalist"));
+    if (connId && kind === "supabase" && slotValue !== "azure_auth") loadSupabaseVarNames(connId, row.querySelector("datalist"));
     else if (connId) {
       ensureConnApps(connId).then(function () {
         if (t && t.app_uuid) loadVarNames(connId, t.app_uuid, row.querySelector("datalist"));
@@ -789,17 +820,26 @@
     if (!tid) return;
     test.disabled = true;
     api("POST", "/api/config/targets/" + tid + "/test").then(function (r) {
-      AR.msg("測試結果 · Test result",
-        (r.exists ? "✓ 變數存在 · the variable exists" + (r.hint ? " (" + r.hint + ")" : "") : "✕ 變數不存在,更新時會新增 · the variable does not exist yet; a rotation would create it") +
-        "\n" + (r.readable ? "✓ 可讀回舊值,支援還原 · the current value can be read back, so rollback is possible"
-                           : "！ 無法讀回舊值 · the current value cannot be read back") +
-        (r.health ? "\n" + (r.health.ok ? "✓ 健康檢查 HTTP " + r.health.status : "✕ 健康檢查失敗 · health check failed: " + (r.health.error || "HTTP " + r.health.status)) : ""));
+      var body;
+      if (r.mode === "azure_auth") {
+        body = (r.azureEnabled ? "✓ Azure provider is enabled." : "！ Azure provider is not enabled.") +
+          "\n" + (r.readable
+            ? "✓ 可讀回 external_azure_secret，失敗時會寫回該值。 · The current external_azure_secret can be read back and would be restored."
+            : "！ 讀不到 external_azure_secret。還原會用本系統保存的目前 Entra 密碼；若沒有副本，就無法把 auth 欄位改回去。 · Supabase did not return external_azure_secret. Rollback uses this app's stored copy of the current Entra secret. If there is no stored copy, the auth field cannot be restored.");
+      } else {
+        body = (r.exists ? "✓ 變數存在 · the variable exists" + (r.hint ? " (" + r.hint + ")" : "") : "✕ 變數不存在,更新時會新增 · the variable does not exist yet; a rotation would create it") +
+          "\n" + (r.readable ? "✓ 可讀回舊值,支援還原 · the current value can be read back, so rollback is possible"
+                             : "！ 無法讀回舊值 · the current value cannot be read back");
+      }
+      if (r.health) body += "\n" + (r.health.ok ? "✓ 健康檢查 HTTP " + r.health.status : "✕ 健康檢查失敗 · health check failed: " + (r.health.error || "HTTP " + r.health.status));
+      AR.msg("測試結果 · Test result", body);
     }).catch(AR.handleErr).then(function () { test.disabled = false; });
   });
 
   function readLines() {
     return $$("#amLines .tgt-line").map(function (row) {
       var kind = row.querySelector(".tm-kind").value === "supabase" ? "supabase" : "coolify";
+      var slot = kind === "supabase" && row.querySelector(".tm-slot").value === "azure_auth" ? "azure_auth" : "secret";
       var connId = row.querySelector(".tm-conn-id").value;
       var uuid = row.querySelector(".tm-app-id").value;
       var known = (coolifyAppsByConn[connId] || []).filter(function (a) { return a.uuid === uuid; })[0];
@@ -807,12 +847,13 @@
       return {
         id: row.getAttribute("data-id") || "",
         kind: kind,
+        slot: slot,
         connectionId: connId,
         connName: connName,
         label: row.querySelector(".tm-label").value.trim(),
         appUuid: kind === "supabase" ? "" : uuid,
         appName: kind === "supabase" ? connName : ((known && known.name) || row.querySelector(".tm-app").value.trim()),
-        varName: row.querySelector(".tm-var").value.trim(),
+        varName: slot === "azure_auth" ? "external_azure_secret" : row.querySelector(".tm-var").value.trim(),
         healthUrl: row.querySelector(".tm-health").value.trim(),
         restart: kind === "supabase" ? false : row.querySelector(".tm-restart").checked,
         row: row
@@ -828,13 +869,13 @@
       var blank = !L.connectionId && !L.appUuid && !L.appName && !L.varName && !L.healthUrl && !L.label;
       if (blank) continue;
       if (L.kind === "supabase") {
-        if (!L.connectionId || !L.varName) {
-          return { error: "Each Supabase line needs a connection and an environment variable. The health check URL can be left blank.", title: "Complete each line", lines: [] };
+        if (!L.connectionId || (L.slot !== "azure_auth" && !L.varName)) {
+          return { error: "Each Supabase line needs a connection and either a project secret or Auth: Azure secret. The health check URL can be left blank.", title: "Complete each line", lines: [] };
         }
       } else if (!L.connectionId || !L.appUuid || !L.varName) {
         return { error: "Each Coolify line needs a connection, application, and environment variable. The health check URL can be left blank.", title: "Complete each line", lines: [] };
       }
-      var key = L.kind + "\n" + L.connectionId + "\n" + (L.kind === "supabase" ? "" : L.appUuid) + "\n" + L.varName;
+      var key = L.kind + "\n" + L.connectionId + "\n" + (L.kind === "supabase" ? L.slot : L.appUuid) + "\n" + L.varName;
       if (seen[key]) {
         return { error: "The same connection, application, and variable are on more than one line.", title: "Duplicate destination", lines: [] };
       }
@@ -848,7 +889,7 @@
     var label = L.label || (L.kind === "supabase" ? (L.connName || L.varName) : (L.appName || L.varName));
     if (L.kind === "supabase") {
       return { kind: "supabase", label: label, supabaseConnectionId: parseInt(L.connectionId, 10),
-        appName: L.connName || "Supabase", varName: L.varName, healthUrl: L.healthUrl, sortOrder: i };
+        supabaseTarget: L.slot, appName: L.connName || "Supabase", varName: L.varName, healthUrl: L.healthUrl, sortOrder: i };
     }
     return { kind: "coolify", label: label, coolifyConnectionId: parseInt(L.connectionId, 10),
       appUuid: L.appUuid, appName: L.appName, varName: L.varName, restart: L.restart, healthUrl: L.healthUrl, sortOrder: i };
@@ -978,12 +1019,17 @@
     ];
   }
   function supabaseProbeRows(r) {
+    var overall = "Not usable";
+    if (r.ok && r.authReadable && r.secretsReadable) overall = "Ready for Auth: Azure secret and project secrets";
+    else if (r.ok && r.authReadable) overall = "Ready for Auth: Azure secret";
+    else if (r.ok) overall = "Ready for project secrets only";
     return [
       ["Endpoint", r.endpoint || "—"],
       ["Project", r.projectRef || "—"],
-      ["Secrets visible", String(r.secrets)],
-      ["Can read values", "No — Supabase returns a digest, not the secret"],
-      ["Overall", r.ok ? "Ready to update secrets" : "Not usable"]
+      ["Auth config", r.authReadable ? "Readable" : "Not readable"],
+      ["Azure provider", r.azureEnabled === true ? "Enabled" : r.azureEnabled === false ? "Not enabled" : "Unknown"],
+      ["Project secrets", r.secretsReadable ? String(r.secrets) + " names (optional)" : "Not accessible (optional)"],
+      ["Overall", overall]
     ];
   }
   function showConnTest(kind, r, where) {
@@ -1034,7 +1080,7 @@
     $("#caUrl").placeholder = supa ? "https://your-project-ref.supabase.co" : "https://coolify-kvm.aeondelightasia.online";
     $("#caName").placeholder = supa ? "e.g. ITQPOMS" : "e.g. Coolify kvm";
     $("#caHint").textContent = supa
-      ? "The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/<project-ref>. Token: Supabase account → Access Tokens, with secrets:read and secrets:write."
+      ? "The project URL, https://api.supabase.com/v1/projects/<project-ref>, or that URL ending in /config/auth. Auth: Azure secret needs permission to read and update auth config. Project secrets additionally need secrets:read and secrets:write."
       : "Coolify → Keys & Tokens → API Tokens. The token needs read:sensitive, write, and deploy.";
   }
 
@@ -1130,7 +1176,7 @@
     if (ceMask) showTokenMask();
     $("#ceUrlLbl").textContent = supa ? "Endpoint URL" : "Server URL";
     $("#ceHint").textContent = supa
-      ? "The project URL from the Supabase dashboard, or https://api.supabase.com/v1/projects/<project-ref>."
+      ? "The project URL, https://api.supabase.com/v1/projects/<project-ref>, or that URL ending in /secrets or /config/auth."
       : "Coolify server URL, for example https://coolify-kvm.aeondelightasia.online.";
     $("#ceState").textContent = connStateText(c);
     $("#ceResult").hidden = true;

@@ -219,12 +219,12 @@ Configuration → **Connections**, then add a connection and choose Supabase. Ea
 | Field | What to enter |
 |---|---|
 | Name | Any label, for example the project name |
-| Endpoint URL | The project URL `https://<project-ref>.supabase.co`, or `https://api.supabase.com/v1/projects/<project-ref>` |
-| API token | A personal access token from Supabase → Account → Access Tokens, with permission to read and write project secrets |
+| Endpoint URL | The project URL `https://<project-ref>.supabase.co`, `https://api.supabase.com/v1/projects/<project-ref>`, or that management URL ending in `/secrets` or `/config/auth`. A `/config/auth` suffix is stored as the project URL. |
+| API token | A personal access token from Supabase → Account → Access Tokens. Auth: Azure secret needs permission to read and update the project's auth config. Project secrets additionally need `secrets:read` and `secrets:write`. |
 
-The token is stored encrypted and is not shown again. **Test connection** checks the project and counts secret names. Supabase does not return the current secret (only a digest), so a rotation snapshots the copy this app already stored.
+The token is stored encrypted and is not shown again. **Test connection** checks auth config and project secrets separately. Secrets access is optional: a token that can read auth config but gets 403 from `/secrets` is still usable for an Auth: Azure secret target.
 
-In the application's Add or Edit dialog, add a delivery target, pick that Supabase connection, and choose the secret name. The list is loaded from the project. Coolify lines are unchanged.
+In the application's Add or Edit dialog, add a delivery target and pick the Supabase connection. The service column chooses **Project secret** (a name from `/secrets`) or **Auth: Azure secret (external_azure_secret)**. The auth target PATCHes `/config/auth` with `{ "external_azure_secret": "<new Entra secret>" }` and does not restart. If Supabase returns that field, rollback writes the previous value back. If it does not, rollback uses this app's stored copy of the current Entra secret. If neither exists, rollback cannot restore the auth field and the run says so. Coolify lines are unchanged.
 
 ## First run, in order
 
@@ -238,14 +238,14 @@ In the application's Add or Edit dialog, add a delivery target, pick that Supaba
 4. Configuration → **Applications** → Add application. Only owned registrations are listed.
    Leave **auto-rotate off** for now.
 5. Configuration → **Applications** → Add or Edit → **Delivery targets** → pick the connection,
-   the Coolify application (or the Supabase secret), and the variable → **Test**. There is no single naming convention:
+   the Coolify application (or, for Supabase, Project secret or Auth: Azure secret), and the variable → **Test**. There is no single naming convention:
 
    | App | Variable |
    |---|---|
    | Access Control Attendance, PWH Attendance Record | `SSO_CLIENT_SECRET` |
    | AEON Document Log | `AZURE_AD_CLIENT_SECRET` |
    | Work Copilot | `ENTRA_CLIENT_SECRET` |
-   | ITQPOMS-Prod | on the Supabase application, `GOTRUE_EXTERNAL_AZURE_SECRET` |
+   | ITQPOMS | Supabase connection for the project, service **Auth: Azure secret (external_azure_secret)** |
 
 6. Prove it on a **throwaway Coolify application with a dummy variable** first: Rotate now, and
    check the run log shows all seven steps.

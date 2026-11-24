@@ -324,8 +324,18 @@ await t("a project URL and a management URL identify the same secrets endpoint",
   const b = supabase.resolveEndpoint("https://api.supabase.com/v1/projects/" + PROJECT);
   assert.strictEqual(a.ref, PROJECT);
   assert.strictEqual(a.secretsUrl, "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets");
+  assert.strictEqual(a.authUrl, "https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth");
   assert.strictEqual(b.secretsUrl, a.secretsUrl);
+  assert.strictEqual(b.authUrl, a.authUrl);
+  const authPath = supabase.resolveEndpoint("https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth");
+  const secretsPath = supabase.resolveEndpoint("https://api.supabase.com/v1/projects/" + PROJECT + "/secrets/");
+  assert.strictEqual(authPath.ref, PROJECT);
+  assert.strictEqual(authPath.endpoint, "https://api.supabase.com/v1/projects/" + PROJECT);
+  assert.strictEqual(authPath.authUrl, a.authUrl);
+  assert.strictEqual(authPath.secretsUrl, a.secretsUrl);
+  assert.strictEqual(secretsPath.endpoint, authPath.endpoint);
   assert.throws(() => supabase.resolveEndpoint("https://api.supabase.com"), /identify one project/);
+  assert.throws(() => supabase.resolveEndpoint("https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth/extra"), /identify one project/);
   const stripped = supabase.resolveEndpoint("https://user:secret-value@" + PROJECT + ".supabase.co/?apikey=secret-value");
   assert.strictEqual(stripped.endpoint, "https://" + PROJECT + ".supabase.co");
   assert.ok(!stripped.endpoint.includes("secret-value") && !stripped.secretsUrl.includes("secret-value"));
@@ -394,6 +404,105 @@ await t("a rejected Supabase token is reported without the token", async () => {
       await assert.rejects(() => supabase.listSecrets(1), (e) => {
         assert.match(e.message, /rejected the API token/);
         assert.ok(!e.message.includes("sbp-secret"));
+        return true;
+      });
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+await t("an Auth target patches external_azure_secret and nowhere else", async () => {
+  supabase.setTestConnectionResolver(() => ({
+    id: 1, endpoint: "https://api.supabase.com/v1/projects/" + PROJECT, ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    authUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth",
+    token: "sbp-test", name: "ITQPOMS",
+  }));
+  const f = httpStub([[/^PATCH \/v1\/projects\/.+\/config\/auth$/, () => jsonRes({ external_azure_secret: "should-not-leak" }, 200)]]);
+  try {
+    await withFetch(f, async () => {
+      const r = await supabase.setAzureSecret(1, "NEW-ENTRA-SECRET");
+      assert.strictEqual(r.mode, "patch");
+      assert.strictEqual(r.key, "external_azure_secret");
+      assert.strictEqual(f.sent.length, 1);
+      assert.strictEqual(f.sent[0].method, "PATCH");
+      assert.strictEqual(f.sent[0].path, "/v1/projects/" + PROJECT + "/config/auth");
+      assert.deepStrictEqual(f.sent[0].body, { external_azure_secret: "NEW-ENTRA-SECRET" });
+      assert.strictEqual(f.sent[0].headers.Authorization, "Bearer sbp-test");
+      assert.ok(!JSON.stringify(r).includes("should-not-leak"));
+      assert.ok(!JSON.stringify(r).includes("NEW-ENTRA-SECRET"));
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+await t("Test connection passes when secrets return 403 and auth config returns 200", async () => {
+  const previous = "previous-entra-secret-value";
+  supabase.setTestConnectionResolver(() => ({
+    id: 4, endpoint: "https://api.supabase.com/v1/projects/" + PROJECT, ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    authUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth",
+    token: "sbp-auth-only", name: "ITQPOMS",
+  }));
+  const f = httpStub([
+    [/^GET \/v1\/projects\/.+\/config\/auth$/, () => jsonRes({
+      external_azure_enabled: true,
+      external_azure_client_id: "client-id-not-a-secret",
+      external_azure_secret: previous,
+    })],
+    [/^GET \/v1\/projects\/.+\/secrets$/, () => jsonRes({ message: "forbidden" }, 403)],
+  ]);
+  try {
+    await withFetch(f, async () => {
+      const probe = await supabase.test(4);
+      assert.strictEqual(probe.ok, true);
+      assert.strictEqual(probe.authReadable, true);
+      assert.strictEqual(probe.azureEnabled, true);
+      assert.strictEqual(probe.secretsReadable, false);
+      assert.strictEqual(probe.secrets, 0);
+      assert.match(probe.note, /Auth: Azure secret target can use this connection/);
+      assert.match(probe.note, /optional/);
+      assert.doesNotMatch(probe.note, /needs permission to read and write project secrets/);
+      const dumped = JSON.stringify(probe);
+      assert.ok(!dumped.includes(previous), "the auth secret must not leave test()");
+      assert.ok(!dumped.includes("client-id-not-a-secret"));
+      assert.ok(!dumped.includes("sbp-auth-only"));
+      const read = await supabase.getAzureSecret(4);
+      assert.strictEqual(read.readable, true);
+      assert.strictEqual(read.value, previous);
+      assert.strictEqual(read.azureEnabled, true);
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+await t("a missing auth secret is not treated as readable, and a secrets 403 names that permission", async () => {
+  supabase.setTestConnectionResolver(() => ({
+    id: 1, ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    authUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth",
+    token: "sbp-test", name: "p",
+  }));
+  const f = httpStub([
+    [/^GET \/v1\/projects\/.+\/config\/auth$/, () => jsonRes({ external_azure_enabled: true, external_azure_secret: "a".repeat(64) })],
+    [/^GET \/v1\/projects\/.+\/secrets$/, () => jsonRes({ message: "forbidden" }, 403)],
+    [/^PATCH \/v1\/projects\/.+\/config\/auth$/, () => jsonRes({ message: "forbidden" }, 403)],
+  ]);
+  try {
+    await withFetch(f, async () => {
+      const read = await supabase.getAzureSecret(1);
+      assert.strictEqual(read.readable, false);
+      assert.strictEqual(read.value, null);
+      await assert.rejects(() => supabase.listSecrets(1), (e) => {
+        assert.match(e.message, /cannot read project secrets/);
+        assert.match(e.message, /GET \/secrets returned 403/);
+        assert.doesNotMatch(e.message, /read and write project secrets/);
+        return true;
+      });
+      await assert.rejects(() => supabase.setAzureSecret(1, "NEW-ENTRA-SECRET"), (e) => {
+        assert.match(e.message, /cannot update the project's auth config/);
+        assert.match(e.message, /PATCH \/config\/auth returned 403/);
+        assert.ok(!e.message.includes("NEW-ENTRA-SECRET"));
         return true;
       });
     });
