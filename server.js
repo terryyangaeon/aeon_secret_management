@@ -424,7 +424,7 @@ app.post("/api/config/targets/:tid/test", requireConfig, wrap(async (req, res) =
   try {
     const t = await regdb.getTarget(idOf(req.params.tid));
     if (!t) throw Object.assign(new Error("No such target."), { status: 404 });
-    const azure = t.kind === "supabase" && t.supabase_target === "azure_auth";
+    const azure = regdb.isSupabaseAzureAuthTarget(t);
     const v = azure
       ? await supabase.getAzureSecret(t.supabase_connection_id)
       : t.kind === "supabase"
@@ -578,6 +578,10 @@ app.get("/api/config/supabase/variables", requireConfig, wrap(async (req, res) =
   try {
     const id = idOf(req.query.connection || req.query.connectionId || "");
     if (!id) throw Object.assign(new Error("connection query parameter is required."), { status: 400 });
+    const slot = String(req.query.target || req.query.slot || "").toLowerCase();
+    if (slot === "azure_auth") {
+      return res.json({ keys: ["external_azure_secret"], readable: false, azureAuth: true });
+    }
     const r = await supabase.listSecrets(id);
     res.json({ keys: r.names, readable: false });
   } catch (e) { fail(res, e); }

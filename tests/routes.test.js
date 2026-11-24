@@ -193,7 +193,8 @@ t("delivery targets are edited inside the application dialog", () => {
   assert.ok(configHtml.includes("Application saved, a delivery target failed"));
 });
 t("a Supabase auth target patches external_azure_secret", () => {
-  assert.ok(configHtml.includes("Auth: Azure secret (external_azure_secret)"));
+  assert.ok(configHtml.includes("Auth: Azure secret"));
+  assert.ok(configHtml.includes("external_azure_secret"));
   assert.ok(configHtml.includes("Project secret"));
   assert.ok(configHtml.includes('class="tm-slot"'));
   assert.ok(configHtml.includes("supabaseTarget:"));
@@ -211,6 +212,9 @@ t("a Supabase auth target patches external_azure_secret", () => {
   const testRoute = server.slice(server.indexOf('app.post("/api/config/targets/:tid/test"'), server.indexOf("// ---- Coolify connections"));
   assert.ok(testRoute.includes('mode: azure ? "azure_auth"'));
   assert.ok(testRoute.includes('hint: azure ? ""'), "the target test must not return an auth secret");
+  assert.ok(testRoute.includes("isSupabaseAzureAuthTarget"), "target test must treat Auth: Azure from var name");
+  const varsRoute = server.slice(server.indexOf('app.get("/api/config/supabase/variables"'), server.indexOf("// ---- Alerts"));
+  assert.ok(varsRoute.includes('slot === "azure_auth"'), "variable list must skip GET /secrets for Auth: Azure");
 });
 t("creating and updating an application both reject an over-long lifetime", () => {
   const post = server.slice(server.indexOf('app.post("/api/config/apps"'), server.indexOf('app.put("/api/config/apps/:id"'));
