@@ -511,6 +511,48 @@ await t("a missing auth secret is not treated as readable, and a secrets 403 nam
   }
 });
 
+g("regdb — Supabase auth targets");
+await t("Auth: Azure secret is recognized from slot, var name, or label text", () => {
+  assert.strictEqual(regdb.isSupabaseAzureAuthTarget({ kind: "supabase", supabase_target: "azure_auth" }), true);
+  assert.strictEqual(regdb.isSupabaseAzureAuthTarget({ kind: "supabase", var_name: "external_azure_secret" }), true);
+  assert.strictEqual(regdb.isSupabaseAzureAuthTarget({ kind: "supabase", varName: "Auth: Azure secret" }), true);
+  assert.strictEqual(regdb.isSupabaseAzureAuthTarget({ kind: "supabase", var_name: "MY_APP_SECRET" }), false);
+  assert.strictEqual(regdb.isSupabaseAzureAuthTarget({ kind: "coolify", var_name: "external_azure_secret" }), false);
+});
+await t("targetFields maps Auth: Azure secret to auth config without project secret name", () => {
+  const f = regdb.targetFields({
+    kind: "supabase",
+    supabaseConnectionId: 3,
+    varName: "external_azure_secret",
+    supabaseTarget: "secret",
+  });
+  assert.strictEqual(f.supabase_target, "azure_auth");
+  assert.strictEqual(f.var_name, "external_azure_secret");
+});
+
+await t("getVariable for external_azure_secret reads auth config, not GET /secrets", async () => {
+  supabase.setTestConnectionResolver(() => ({
+    id: 1, ref: PROJECT,
+    secretsUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/secrets",
+    authUrl: "https://api.supabase.com/v1/projects/" + PROJECT + "/config/auth",
+    token: "sbp-test", name: "p",
+  }));
+  const f = httpStub([
+    [/^GET \/v1\/projects\/.+\/config\/auth$/, () => jsonRes({ external_azure_enabled: true, external_azure_secret: "z".repeat(48) })],
+    [/^GET \/v1\/projects\/.+\/secrets$/, () => jsonRes({ message: "forbidden" }, 403)],
+  ]);
+  try {
+    await withFetch(f, async () => {
+      const v = await supabase.getVariable(1, "external_azure_secret");
+      assert.strictEqual(v.exists, true);
+      assert.strictEqual(v.readable, true);
+      assert.strictEqual(f.sent.filter((x) => /\/secrets/.test(x.url)).length, 0);
+    });
+  } finally {
+    supabase.setTestConnectionResolver(null);
+  }
+});
+
 g("regdb — Coolify URL");
 await t("normCoolifyUrl adds https and strips a trailing /api/v1", () => {
   assert.strictEqual(regdb.normCoolifyUrl("coolify-kvm.aeondelightasia.online"), "https://coolify-kvm.aeondelightasia.online");

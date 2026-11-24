@@ -659,6 +659,19 @@
   function paintVarOptions(dl, keys) {
     dl.innerHTML = (keys || []).map(function (k) { return '<option value="' + esc(k) + '">'; }).join("");
   }
+  function supabaseAuthVarHint(v) {
+    return /^external_azure_secret$/i.test(String(v || "").trim()) || /^auth:\s*azure/i.test(String(v || "").trim());
+  }
+  function syncSupabaseSlotFromVar(row) {
+    if (!row || row.querySelector(".tm-kind").value !== "supabase") return;
+    var slot = row.querySelector(".tm-slot");
+    var variable = row.querySelector(".tm-var");
+    if (!slot || !variable || slot.value === "azure_auth") return;
+    if (supabaseAuthVarHint(variable.value)) {
+      slot.value = "azure_auth";
+      applySlot(row, false);
+    }
+  }
   function applySlot(row, fromUser) {
     var slot = row.querySelector(".tm-slot");
     var variable = row.querySelector(".tm-var");
@@ -698,7 +711,8 @@
     row.className = "tgt-line";
     if (t && t.id) row.setAttribute("data-id", String(t.id));
     var kind = t && t.kind === "supabase" ? "supabase" : "coolify";
-    var slotValue = t && t.supabase_target === "azure_auth" ? "azure_auth" : "secret";
+    var slotValue = "secret";
+    if (t && t.kind === "supabase" && (t.supabase_target === "azure_auth" || supabaseAuthVarHint(t.var_name))) slotValue = "azure_auth";
     var connId = "";
     if (t) {
       connId = kind === "supabase"
@@ -717,12 +731,12 @@
       '<div class="tgt-cell" data-label="服務 Service"><div class="combo">' +
         '<input type="text" class="tm-app" placeholder="Search applications" autocomplete="off" spellcheck="false" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_name || "") : "")) + '">' +
         '<input type="hidden" class="tm-app-id" value="' + esc(kind === "supabase" ? "" : (t ? (t.app_uuid || "") : "")) + '">' +
-        '<div class="combo-list" hidden></div></div>' +
-        '<select class="tm-slot" hidden>' +
-          '<option value="secret">Project secret</option>' +
-          '<option value="azure_auth"' + (slotValue === "azure_auth" ? " selected" : "") + '>Auth: Azure secret (external_azure_secret)</option>' +
-        '</select></div>' +
+        '<div class="combo-list" hidden></div></div></div>' +
       '<div class="tgt-cell" data-label="變數 Variable">' +
+        '<select class="tm-slot" hidden title="Supabase delivery type">' +
+          '<option value="secret">Project secret</option>' +
+          '<option value="azure_auth"' + (slotValue === "azure_auth" ? " selected" : "") + '>Auth: Azure secret</option>' +
+        '</select>' +
         '<input type="text" class="tm-var" placeholder="SSO_CLIENT_SECRET" list="tmVars' + n + '" value="' + esc(t ? (t.var_name || "") : "") + '">' +
         '<datalist id="tmVars' + n + '"></datalist></div>' +
       '<label class="chk tgt-cell" data-label="重啟 Restart"><input type="checkbox" class="tm-restart"' + (kind !== "supabase" && (!t || t.restart) ? " checked" : "") + "></label>" +
@@ -735,9 +749,11 @@
     row.querySelector(".tm-slot").addEventListener("change", function () {
       applySlot(row, true);
       if (row.querySelector(".tm-slot").value !== "azure_auth") {
-        loadSupabaseVarNames(row.querySelector(".tm-conn-id").value, row.querySelector("datalist"));
+        loadSupabaseVarNames(row.querySelector(".tm-conn-id").value, row.querySelector("datalist"), row);
       }
     });
+    row.querySelector(".tm-var").addEventListener("change", function () { syncSupabaseSlotFromVar(row); });
+    row.querySelector(".tm-var").addEventListener("blur", function () { syncSupabaseSlotFromVar(row); });
     applyLineKind(row, t ? kind : "coolify");
     var connInput = row.querySelector(".tm-conn");
     var connHidden = row.querySelector(".tm-conn-id");
@@ -756,7 +772,7 @@
         var label = row.querySelector(".tm-label");
         if (it.kind === "supabase") {
           if (label && !label.value.trim()) label.value = it.name;
-          if (row.querySelector(".tm-slot").value !== "azure_auth") loadSupabaseVarNames(it.connId, row.querySelector("datalist"));
+          if (row.querySelector(".tm-slot").value !== "azure_auth") loadSupabaseVarNames(it.connId, row.querySelector("datalist"), row);
         } else {
           ensureConnApps(it.connId).catch(function (err) { $("#amTgtHint").textContent = (err && err.message) || ""; });
         }
@@ -774,7 +790,7 @@
         loadVarNames(connHidden.value, it.id, row.querySelector("datalist"));
       }
     });
-    if (connId && kind === "supabase" && slotValue !== "azure_auth") loadSupabaseVarNames(connId, row.querySelector("datalist"));
+    if (connId && kind === "supabase" && slotValue !== "azure_auth") loadSupabaseVarNames(connId, row.querySelector("datalist"), row);
     else if (connId) {
       ensureConnApps(connId).then(function () {
         if (t && t.app_uuid) loadVarNames(connId, t.app_uuid, row.querySelector("datalist"));
@@ -791,8 +807,12 @@
         "Coolify did not return variable values (the token is missing read:sensitive), so the old value cannot be snapshotted before a rotation.";
     }).catch(function (err) { $("#amTgtHint").textContent = (err && err.message) || ""; });
   }
-  function loadSupabaseVarNames(connId, dl) {
+  function loadSupabaseVarNames(connId, dl, row) {
     if (!connId) { dl.innerHTML = ""; return Promise.resolve(); }
+    if (row && row.querySelector(".tm-slot") && row.querySelector(".tm-slot").value === "azure_auth") {
+      paintVarOptions(dl, ["external_azure_secret"]);
+      return Promise.resolve();
+    }
     return api("GET", "/api/config/supabase/variables?connection=" + encodeURIComponent(connId)).then(function (d) {
       paintVarOptions(dl, d.keys);
       $("#amTgtHint").textContent = "Supabase lists secret names. The current value is not returned, so rollback uses the copy stored by this app.";
@@ -839,7 +859,10 @@
   function readLines() {
     return $$("#amLines .tgt-line").map(function (row) {
       var kind = row.querySelector(".tm-kind").value === "supabase" ? "supabase" : "coolify";
-      var slot = kind === "supabase" && row.querySelector(".tm-slot").value === "azure_auth" ? "azure_auth" : "secret";
+      var slotEl = row.querySelector(".tm-slot");
+      var slot = kind === "supabase" && slotEl && slotEl.value === "azure_auth" ? "azure_auth" : "secret";
+      var varTyped = row.querySelector(".tm-var").value.trim();
+      if (kind === "supabase" && slot !== "azure_auth" && supabaseAuthVarHint(varTyped)) slot = "azure_auth";
       var connId = row.querySelector(".tm-conn-id").value;
       var uuid = row.querySelector(".tm-app-id").value;
       var known = (coolifyAppsByConn[connId] || []).filter(function (a) { return a.uuid === uuid; })[0];
